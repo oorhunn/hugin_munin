@@ -1,0 +1,11 @@
+# Build output
+build/
+compile_commands.json
+
+# Editor and tooling
+.cache/
+.vscode/
+.idea/
+
+# macOS
+.DS_Store

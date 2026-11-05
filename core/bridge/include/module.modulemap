@@ -1,0 +1,4 @@
+module HMBridge {
+    header "hm_bridge.h"
+    export *
+}

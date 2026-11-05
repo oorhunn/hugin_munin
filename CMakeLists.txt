@@ -1,0 +1,60 @@
+cmake_minimum_required(VERSION 3.29)
+
+set(CMAKE_OSX_DEPLOYMENT_TARGET 14.0 CACHE STRING "Minimum macOS version")
+project(hugin_munin VERSION 0.1.0 LANGUAGES CXX)
+
+if(NOT APPLE)
+  message(FATAL_ERROR "Only the macOS backend is implemented so far")
+endif()
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+add_library(hm_core
+  core/src/metrics.cpp
+  core/src/sampler.cpp
+  core/src/platform/macos/collectors.cpp
+)
+target_include_directories(hm_core PUBLIC core/include)
+target_link_libraries(hm_core PUBLIC "-framework CoreFoundation")
+target_compile_options(hm_core PRIVATE -Wall -Wextra -Wpedantic)
+
+add_library(hm_bridge core/bridge/bridge.cpp)
+target_include_directories(hm_bridge PUBLIC core/bridge/include)
+target_link_libraries(hm_bridge PUBLIC hm_core)
+target_compile_options(hm_bridge PRIVATE -Wall -Wextra -Wpedantic)
+
+# The macOS UI. CMake only supports Swift with the Ninja and Xcode generators.
+enable_language(Swift)
+set(CMAKE_Swift_LANGUAGE_VERSION 6)
+# Incremental mode fails on relink with swiftc's cannotResolveTempPath error.
+set(CMAKE_Swift_COMPILATION_MODE wholemodule)
+add_executable(HuginMunin MACOSX_BUNDLE
+  ui/macos/main.swift
+  ui/macos/Monitor.swift
+  ui/macos/Notch.swift
+  ui/macos/Settings.swift
+  ui/macos/Style.swift
+)
+set_target_properties(HuginMunin PROPERTIES
+  MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/ui/macos/Info.plist.in
+)
+target_link_libraries(HuginMunin PRIVATE hm_bridge)
+# swiftc writes dependency files next to the executable, named by build type, and codesign rejects
+# stray files in a bundle.
+add_custom_command(TARGET HuginMunin POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E rm -f $<TARGET_FILE:HuginMunin>.d $<TARGET_FILE:HuginMunin>.emit-module.d
+  COMMAND codesign --force --sign - $<TARGET_BUNDLE_DIR:HuginMunin>
+)
+
+include(CTest)
+if(BUILD_TESTING)
+  foreach(test metrics_test collectors_test sampler_test bridge_test)
+    add_executable(${test} tests/${test}.cpp)
+    target_link_libraries(${test} PRIVATE hm_bridge)
+    target_compile_options(${test} PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME ${test} COMMAND ${test})
+  endforeach()
+endif()
