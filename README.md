@@ -18,6 +18,11 @@ The macOS app shows live CPU, memory, disk, and GPU usage side by side around th
 the notch to expand it, and open **Settings** from there to change the update interval, the metrics
 beside the notch, and launch at login.
 
+Drop documents or folders onto the notch to keep them on the **File shelf**. Drag a shelf item to
+Finder or another app when ready. Successful moves or copies remove the entry; cancelled drags
+keep it. The × button only removes the reference. The shelf is temporary and clears when the app
+quits; adding an item leaves its original in place.
+
 ## Build and test
 
 Requires CMake 3.29 or later, Ninja, a C++23 compiler, and Swift 6.

@@ -2,6 +2,16 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-06
+
+- Added a temporary file/folder shelf to the expanded notch, with drops onto the collapsed trigger
+  opening the panel. Shelf entries show file icons, support dragging to external destinations,
+  and have a remove button that leaves originals intact.
+- Added C++ shelf membership and a C bridge, including normalization and duplicate rejection.
+- Built the app, passed all five test programs, and passed the 10-second launch smoke test.
+- Real Finder drag/drop, copy/move, cancellation, scrolling, and physical notch interactions
+  remain unverified; the manual checklist is in `development.md`.
+
 ## 2026-11-05
 
 - Added GPU usage and put CPU, memory, disk, and GPU side by side in the notch and its panel.
