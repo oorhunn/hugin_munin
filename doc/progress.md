@@ -7,7 +7,8 @@ What has been accomplished, newest first.
 - Investigated a Swift 6.3.3 CI compiler crash generating an isolated Boolean callback wrapper.
   Shelf callback annotations and then direct notch state access did not resolve it. Located a
   remaining bound-method conversion in the Launch at login binding and replaced it with an
-  explicit closure. Local Swift 6.4 build, tests, and smoke test pass; CI confirmation is pending.
+  explicit closure. Local Swift 6.4 build, tests, and smoke test pass. All five CI checks passed
+  on commit `ced4a04`, including Debug and Release builds on Swift 6.3.3.
 
 - Added a temporary file/folder shelf to the expanded notch, with drops onto the collapsed trigger
   opening the panel. Shelf entries show file icons, support dragging to external destinations,
