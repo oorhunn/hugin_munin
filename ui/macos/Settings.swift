@@ -120,7 +120,11 @@ struct SettingsView: View {
                     }
                 }
             }
-            Toggle("Launch at login", isOn: Binding(get: { loginItem.isOn }, set: loginItem.set))
+            // An explicit closure avoids Swift 6.3's IR-generation crash when adapting
+            // the isolated bound method to Binding's Boolean setter.
+            Toggle("Launch at login", isOn: Binding(
+                get: { loginItem.isOn }, set: { loginItem.set($0) }
+            ))
             if loginItem.status == .requiresApproval {
                 HStack {
                     Text("Needs your approval in System Settings.")

@@ -4,10 +4,10 @@ What has been accomplished, newest first.
 
 ## 2026-11-06
 
-- CI's Swift 6.3.3 compiler crashed generating a Boolean callback wrapper for shelf drag state.
-  Explicit main-actor callback annotations did not resolve the CI crash. Replaced that callback
-  chain with direct main-actor notch state access from the AppKit drag source.
-  Local Swift 6.4 build, tests, and smoke test pass; CI confirmation is pending.
+- Investigated a Swift 6.3.3 CI compiler crash generating an isolated Boolean callback wrapper.
+  Shelf callback annotations and then direct notch state access did not resolve it. Located a
+  remaining bound-method conversion in the Launch at login binding and replaced it with an
+  explicit closure. Local Swift 6.4 build, tests, and smoke test pass; CI confirmation is pending.
 
 - Added a temporary file/folder shelf to the expanded notch, with drops onto the collapsed trigger
   opening the panel. Shelf entries show file icons, support dragging to external destinations,
