@@ -4,6 +4,27 @@ What has been accomplished, newest first.
 
 ## 2026-11-05
 
+- Added GPU usage and put CPU, memory, disk, and GPU side by side in the notch and its panel.
+  - Ported GPU reading from `resource_visualizer`, keeping only utilization and core count. With
+    several GPUs, the notch shows the busiest one.
+  - Replaced the left and right pickers in Settings with a checkbox per metric. The wings and their
+    hover area resize to fit. The panel widened from 480 to 640 points and always shows all four.
+- Verified on a MacBook Pro with an M2 Pro:
+  - All four test programs pass.
+  - GPU core count matched the system (19). Under a sustained Metal load, GPU read 99%, the same as
+    `ioreg`, then fell back afterwards. A read takes about 25 µs.
+  - The app showed all four metrics, with two per side. Three metrics split as two and one. Two
+    metrics narrowed the notch live.
+  - With two metrics, hovering inside the narrower wing expanded the panel 5 of 5 times, and
+    hovering at the old outer edge did not, 5 of 5 times.
+- Known issues:
+  - The driver seems to report GPU activity since the last read, so a second read within
+    milliseconds returns 0. With `ioreg`, whichever ran second read 0. Another tool polling the GPU
+    at the same moment could make this app briefly show 0%.
+  - One hover inside the wing failed to expand the panel during testing. It did not happen again in
+    the 7 later attempts on the same code, and the cause is unknown.
+  - The wider notch covers more of the menu bar, so it can hide menu bar items. This was not
+    checked with a full menu bar.
 - Published the project to https://github.com/oorhunn/hugin_munin as a public repository.
 - Added the settings menu UI and the README icon.
   - A Settings button in the expanded notch panel opens a small window with the update interval,

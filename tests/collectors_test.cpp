@@ -24,6 +24,12 @@ int main() {
             "Memory used accounting");
     require(memory->used <= memory->total, "Used memory fits in installed memory");
 
+    const auto gpus = hm::collect_gpus();
+    require(gpus.has_value(), "GPU statistics are readable");
+    for (const auto &gpu : *gpus)
+        require(!gpu.utilization || (*gpu.utilization >= 0 && *gpu.utilization <= 100),
+                "GPU utilization is a percentage");
+
     const auto disk = hm::collect_disk();
     require(disk.has_value(), "Disk capacity is readable");
     require(disk->total > 0 && disk->used <= disk->total, "Disk usage fits in capacity");

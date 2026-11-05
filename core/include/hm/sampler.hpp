@@ -21,12 +21,15 @@ struct Sample {
     std::size_t core_count = 0;
     std::optional<Memory> memory;
     std::optional<Disk> disk;
+    std::optional<double> gpu_percent; // empty when unknown; never a stale reading
+    std::optional<std::size_t> gpu_core_count;
 };
 
 struct Sources {
     std::function<Collected<std::vector<CpuCoreTicks>>()> cpu_cores = collect_cpu_cores;
     std::function<Collected<Memory>()> memory = collect_memory;
     std::function<Collected<Disk>()> disk = collect_disk;
+    std::function<Collected<std::vector<Gpu>>()> gpus = collect_gpus;
 };
 
 struct Intervals {

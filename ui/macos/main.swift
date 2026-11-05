@@ -10,10 +10,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         monitor.start(interval: settings.interval)
         settings.onIntervalChange = { [monitor] in monitor.setInterval($0) }
-        notch = NotchController(monitor: monitor, settings: settings) { [weak self] in
+        let notch = NotchController(monitor: monitor, settings: settings) { [weak self] in
             self?.settingsWindow.show()
         }
-        notch?.show()
+        settings.onWingMetricsChange = { [weak notch] in notch?.layout() }
+        self.notch = notch
+        notch.show()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

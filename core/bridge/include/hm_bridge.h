@@ -11,9 +11,9 @@ extern "C" {
 
 // Percentages are NaN and sizes are zero until the value is known.
 typedef struct {
-    double cpu_percent, memory_percent, disk_percent;
+    double cpu_percent, memory_percent, disk_percent, gpu_percent;
     uint64_t memory_used, memory_total, disk_free;
-    size_t core_count;
+    size_t core_count, gpu_core_count;
 } hm_sample;
 
 typedef struct hm_sampler hm_sampler;
