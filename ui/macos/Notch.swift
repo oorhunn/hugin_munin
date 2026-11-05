@@ -227,7 +227,7 @@ struct NotchView: View {
                     if state.expanded {
                         VStack(spacing: 10) {
                             NotchPanel(system: monitor.state, openSettings: openSettings)
-                            FileShelfView(shelf: state.shelf) { state.dragging = $0 }
+                            FileShelfView(state: state)
                         }
                             .padding(.horizontal, 20)
                             .padding(.bottom, 12)

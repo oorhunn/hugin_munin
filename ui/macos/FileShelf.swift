@@ -80,10 +80,8 @@ final class ShelfDropHosting: NSHostingView<AnyView> {
 }
 
 struct FileShelfView: View {
-    let shelf: FileShelf
-    // Keep isolation explicit across SwiftUI and AppKit; Swift 6.3 crashes emitting
-    // the inferred isolated-any Bool callback conversion.
-    let dragging: @MainActor (Bool) -> Void
+    let state: NotchState
+    private var shelf: FileShelf { state.shelf }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -102,7 +100,7 @@ struct FileShelfView: View {
                     HStack(spacing: 10) {
                         ForEach(shelf.urls, id: \.self) { url in
                             HStack(spacing: 2) {
-                                ShelfDragItem(url: url, dragging: dragging,
+                                ShelfDragItem(url: url, state: state,
                                               completed: { shelf.remove(url) })
                                     .frame(width: 145, height: 54)
                                 Button { shelf.remove(url) } label: {
@@ -126,13 +124,13 @@ struct FileShelfView: View {
 
 private struct ShelfDragItem: NSViewRepresentable {
     let url: URL
-    let dragging: @MainActor (Bool) -> Void
+    let state: NotchState
     let completed: @MainActor () -> Void
 
     func makeNSView(context: Context) -> ShelfDragView { ShelfDragView() }
     func updateNSView(_ view: ShelfDragView, context: Context) {
         view.url = url
-        view.dragging = dragging
+        view.state = state
         view.completed = completed
         view.toolTip = url.path
         view.setAccessibilityLabel("Drag \(url.lastPathComponent)")
@@ -142,7 +140,9 @@ private struct ShelfDragItem: NSViewRepresentable {
 
 private final class ShelfDragView: NSView, NSDraggingSource {
     var url = URL(fileURLWithPath: "/")
-    var dragging: (@MainActor (Bool) -> Void)?
+    // Share the main-actor state directly: passing a Bool callback through the
+    // representable triggers a compiler IR-generation crash on Swift 6.3.
+    weak var state: NotchState?
     var completed: (@MainActor () -> Void)?
 
     override func draw(_ dirtyRect: NSRect) {
@@ -163,7 +163,7 @@ private final class ShelfDragView: NSView, NSDraggingSource {
         }
         let item = NSDraggingItem(pasteboardWriter: url as NSURL)
         item.setDraggingFrame(bounds, contents: NSWorkspace.shared.icon(forFile: url.path))
-        dragging?(true)
+        state?.dragging = true
         beginDraggingSession(with: [item], event: event, source: self)
     }
 
@@ -175,6 +175,6 @@ private final class ShelfDragView: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint,
                          operation: NSDragOperation) {
         if !operation.intersection([.copy, .move]).isEmpty { completed?() }
-        dragging?(false)
+        state?.dragging = false
     }
 }
