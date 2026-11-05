@@ -14,7 +14,6 @@ final class FileShelf {
     private var handle: OpaquePointer? { storage.pointer }
     private(set) var urls: [URL] = []
 
-
     func add(_ urls: [URL]) {
         for url in urls where url.isFileURL {
             _ = url.path.withCString { hm_file_shelf_add(handle, $0) }
@@ -82,7 +81,9 @@ final class ShelfDropHosting: NSHostingView<AnyView> {
 
 struct FileShelfView: View {
     let shelf: FileShelf
-    let dragging: (Bool) -> Void
+    // Keep isolation explicit across SwiftUI and AppKit; Swift 6.3 crashes emitting
+    // the inferred isolated-any Bool callback conversion.
+    let dragging: @MainActor (Bool) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -125,8 +126,8 @@ struct FileShelfView: View {
 
 private struct ShelfDragItem: NSViewRepresentable {
     let url: URL
-    let dragging: (Bool) -> Void
-    let completed: () -> Void
+    let dragging: @MainActor (Bool) -> Void
+    let completed: @MainActor () -> Void
 
     func makeNSView(context: Context) -> ShelfDragView { ShelfDragView() }
     func updateNSView(_ view: ShelfDragView, context: Context) {
@@ -141,8 +142,8 @@ private struct ShelfDragItem: NSViewRepresentable {
 
 private final class ShelfDragView: NSView, NSDraggingSource {
     var url = URL(fileURLWithPath: "/")
-    var dragging: ((Bool) -> Void)?
-    var completed: (() -> Void)?
+    var dragging: (@MainActor (Bool) -> Void)?
+    var completed: (@MainActor () -> Void)?
 
     override func draw(_ dirtyRect: NSRect) {
         NSWorkspace.shared.icon(forFile: url.path).draw(in: NSRect(x: 4, y: 14, width: 26, height: 26))
