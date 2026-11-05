@@ -3,9 +3,9 @@ import Observation
 import ServiceManagement
 import SwiftUI
 
-/// A metric that can sit beside the notch.
-enum WingMetric: String, CaseIterable, Identifiable {
-    case cpu, memory, disk
+/// A metric the notch can show. The declaration order is the order on screen.
+enum Metric: String, CaseIterable, Identifiable {
+    case cpu, memory, disk, gpu
 
     var id: Self { self }
 
@@ -14,6 +14,7 @@ enum WingMetric: String, CaseIterable, Identifiable {
         case .cpu: "CPU"
         case .memory: "Memory"
         case .disk: "Disk"
+        case .gpu: "GPU"
         }
     }
 
@@ -22,6 +23,7 @@ enum WingMetric: String, CaseIterable, Identifiable {
         case .cpu: "cpu"
         case .memory: "memorychip"
         case .disk: "internaldrive"
+        case .gpu: "display"
         }
     }
 
@@ -30,6 +32,7 @@ enum WingMetric: String, CaseIterable, Identifiable {
         case .cpu: state.cpuPercent
         case .memory: state.memoryPercent
         case .disk: state.diskPercent
+        case .gpu: state.gpuPercent
         }
     }
 }
@@ -40,6 +43,7 @@ final class Settings {
     static let intervals: [Double] = [0.5, 1, 2, 5, 10]
 
     @ObservationIgnored var onIntervalChange: ((Double) -> Void)?
+    @ObservationIgnored var onWingMetricsChange: (() -> Void)?
 
     var interval: Double {
         didSet {
@@ -48,24 +52,26 @@ final class Settings {
         }
     }
 
-    var leftMetric: WingMetric {
-        didSet { UserDefaults.standard.set(leftMetric.rawValue, forKey: "leftMetric") }
+    /// The metrics beside the collapsed notch.
+    var wingMetrics: Set<Metric> {
+        didSet {
+            UserDefaults.standard.set(wingMetrics.map(\.rawValue), forKey: "wingMetrics")
+            onWingMetricsChange?()
+        }
     }
 
-    var rightMetric: WingMetric {
-        didSet { UserDefaults.standard.set(rightMetric.rawValue, forKey: "rightMetric") }
-    }
+    /// The chosen metrics in screen order, with the first half left of the notch.
+    private var orderedWingMetrics: [Metric] { Metric.allCases.filter(wingMetrics.contains) }
+    private var leftCount: Int { (orderedWingMetrics.count + 1) / 2 }
+    var leftMetrics: [Metric] { Array(orderedWingMetrics.prefix(leftCount)) }
+    var rightMetrics: [Metric] { Array(orderedWingMetrics.dropFirst(leftCount)) }
 
     init() {
         let defaults = UserDefaults.standard
         let saved = defaults.double(forKey: "interval")
         interval = Self.intervals.contains(saved) ? saved : 1
-        leftMetric = Self.metric(forKey: "leftMetric") ?? .cpu
-        rightMetric = Self.metric(forKey: "rightMetric") ?? .memory
-    }
-
-    private static func metric(forKey key: String) -> WingMetric? {
-        UserDefaults.standard.string(forKey: key).flatMap(WingMetric.init(rawValue:))
+        wingMetrics = defaults.stringArray(forKey: "wingMetrics")
+            .map { Set($0.compactMap(Metric.init(rawValue:))) } ?? Set(Metric.allCases)
     }
 }
 
@@ -106,9 +112,19 @@ struct SettingsView: View {
                     Text(interval.formatted() + " s").tag(interval)
                 }
             }
-            metricPicker("Left of notch", selection: $settings.leftMetric)
-            metricPicker("Right of notch", selection: $settings.rightMetric)
-            Toggle("Launch at login", isOn: Binding(get: { loginItem.isOn }, set: loginItem.set))
+            LabeledContent("Beside the notch") {
+                HStack(spacing: 12) {
+                    ForEach(Metric.allCases) { metric in
+                        Toggle(metric.title, isOn: binding(for: metric))
+                            .toggleStyle(.checkbox)
+                    }
+                }
+            }
+            // An explicit closure avoids Swift 6.3's IR-generation crash when adapting
+            // the isolated bound method to Binding's Boolean setter.
+            Toggle("Launch at login", isOn: Binding(
+                get: { loginItem.isOn }, set: { loginItem.set($0) }
+            ))
             if loginItem.status == .requiresApproval {
                 HStack {
                     Text("Needs your approval in System Settings.")
@@ -126,12 +142,14 @@ struct SettingsView: View {
         .fixedSize()
     }
 
-    private func metricPicker(_ title: String, selection: Binding<WingMetric>) -> some View {
-        Picker(title, selection: selection) {
-            ForEach(WingMetric.allCases) { metric in
-                Text(metric.title).tag(metric)
+    private func binding(for metric: Metric) -> Binding<Bool> {
+        Binding(get: { settings.wingMetrics.contains(metric) }, set: { shown in
+            if shown {
+                settings.wingMetrics.insert(metric)
+            } else {
+                settings.wingMetrics.remove(metric)
             }
-        }
+        })
     }
 }
 

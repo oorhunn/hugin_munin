@@ -33,6 +33,11 @@ struct Fake {
                     if (fail)
                         return std::unexpected("disk");
                     return hm::Disk{.total = 200, .used = 50};
+                },
+                [this]() -> hm::Collected<std::vector<hm::Gpu>> {
+                    if (fail)
+                        return std::unexpected("gpu");
+                    return std::vector<hm::Gpu>{{60.0, 19}};
                 }};
     }
 };
@@ -46,6 +51,7 @@ int main() {
     const auto first = tracker.update(start);
     require(!first.cpu_percent, "CPU needs two readings");
     require(first.core_count == 1 && first.memory && first.disk, "First pass reads everything");
+    require(first.gpu_percent == 60.0 && first.gpu_core_count == 19, "First pass reads the GPU");
 
     fake.user = 30;
     fake.idle = 70;
@@ -62,7 +68,9 @@ int main() {
     const auto failed = tracker.update(start + 120s);
     require(fake.disk_reads == 3, "Failed disk read was attempted");
     require(!failed.cpu_percent, "A failed CPU read is unknown, not stale");
-    require(failed.memory && failed.memory->used == 40, "A failed memory read keeps the last value");
+    require(!failed.gpu_percent, "A failed GPU read is unknown, not stale");
+    require(failed.memory && failed.memory->used == 40,
+            "A failed memory read keeps the last value");
     require(failed.disk && failed.disk->used == 50, "A failed disk read keeps the last value");
 
     fake.fail = false;

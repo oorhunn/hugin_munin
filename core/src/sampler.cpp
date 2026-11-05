@@ -19,6 +19,12 @@ const Sample &SampleTracker::update(std::chrono::steady_clock::time_point now) {
     }
     if (const auto memory = sources_.memory())
         sample_.memory = *memory;
+    if (const auto gpus = sources_.gpus(); gpus && !gpus->empty()) {
+        sample_.gpu_percent = busiest_gpu(*gpus);
+        sample_.gpu_core_count = gpus->front().core_count;
+    } else {
+        sample_.gpu_percent.reset();
+    }
     if (!last_disk_read_ || now - *last_disk_read_ >= disk_interval_) {
         last_disk_read_ = now;
         if (const auto disk = sources_.disk())

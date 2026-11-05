@@ -7,10 +7,12 @@ struct SystemState: Sendable {
     var cpuPercent: Double?
     var memoryPercent: Double?
     var diskPercent: Double?
+    var gpuPercent: Double?
     var memoryUsed: UInt64 = 0
     var memoryTotal: UInt64 = 0
     var diskFree: UInt64 = 0
     var coreCount = 0
+    var gpuCoreCount = 0
 
     init() {}
 
@@ -18,10 +20,12 @@ struct SystemState: Sendable {
         cpuPercent = Self.known(sample.cpu_percent)
         memoryPercent = Self.known(sample.memory_percent)
         diskPercent = Self.known(sample.disk_percent)
+        gpuPercent = Self.known(sample.gpu_percent)
         memoryUsed = sample.memory_used
         memoryTotal = sample.memory_total
         diskFree = sample.disk_free
         coreCount = sample.core_count
+        gpuCoreCount = sample.gpu_core_count
     }
 
     private static func known(_ value: Double) -> Double? { value.isNaN ? nil : value }
