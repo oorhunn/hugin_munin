@@ -29,6 +29,7 @@
 | 2026-11-05 | Releases are built for Apple Silicon only. | Every Mac with a notch has an Apple Silicon chip. Proposed during the CI setup. |
 | 2026-11-05 | Workflows pin actions to commit SHAs, and Dependabot proposes updates. | A release job has write access, and a tag on an action can be moved. Proposed during the CI setup. |
 | 2026-11-05 | `doc/` is split into a guide per topic, with `doc/README.md` as the index. | `progress.md` and `decisions.md` record history, and the new pages describe how things work now. Proposed during the docs setup. |
+| 2026-11-06 | `.clang-tidy` enables the bug-finding and modernization check groups, turns off style-only checks, and fails CI on any warning. | Style checks gave most of the 812 findings in a first run. With only the useful checks left, a warning should stop a merge. Proposed during the setup, and the owner asked for it to run in CI. |
 
 ## Open questions
 

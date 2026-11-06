@@ -4,7 +4,7 @@
 
 - macOS 14 or later to run the app
 - CMake 3.29 or later, Ninja, a C++23 compiler, and Swift 6
-- `clang-format` to check formatting
+- `clang-format` and `clang-tidy` to check C++, from `brew install clang-format llvm`
 
 The Xcode command line tools are enough. The full Xcode app is not needed.
 
@@ -65,7 +65,26 @@ git ls-files '*.cpp' '*.hpp' '*.h' | xargs clang-format --dry-run -Werror  # che
 git ls-files '*.cpp' '*.hpp' '*.h' | xargs clang-format -i                 # fix
 ```
 
-Swift formatting is not checked yet.
+Swift formatting is not checked yet. `third_party/.clang-format` turns formatting off for vendored
+code, so these commands leave it alone.
+
+## Linting
+
+`.clang-tidy` turns on the bug-finding and modernization check groups, and turns off checks that
+only enforce a style this project does not use. Any warning fails the check. `tests/.clang-tidy`
+adds to this for test code. CI uses clang-tidy 23.1.4.
+
+Homebrew does not put `clang-tidy` on `PATH`, and the SDK path has to be passed in. Configure the
+build first, because the command reads its compile database.
+
+```sh
+git ls-files '*.cpp' | xargs -P 6 -n 1 "$(brew --prefix llvm)/bin/clang-tidy" --quiet -p build \
+    --extra-arg=-isysroot"$(xcrun --show-sdk-path)"
+```
+
+Results from vendored and SDK headers are filtered out. If a warning is wrong for one line, use
+`// NOLINT(check-name)` with a reason, and if it is wrong for the project, turn the check off in
+`.clang-tidy`.
 
 ## Deployment target
 

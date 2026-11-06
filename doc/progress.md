@@ -2,6 +2,18 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-06
+
+- Added `clang-tidy` to the project and to CI.
+  - `.clang-tidy` covers bug-finding and modernization checks, `tests/.clang-tidy` turns off three
+    checks that do not fit test code, and style-only checks stay off.
+  - A new Lint job runs clang-tidy 23.1.4 and fails on any warning.
+  - `.clang-format` now names the language and the latest C++ standard. No file changed format.
+  - `third_party/.clang-format` turns formatting off for vendored code.
+  - Fixed the 9 warnings in the committed code, with no change in behavior: an `explicit`
+    constructor, `std::scoped_lock`, a `stop_token` passed by reference, an explicit `void *` cast,
+    and clearer declarations.
+
 ## 2026-11-05
 
 - Added GPU usage and put CPU, memory, disk, and GPU side by side in the notch and its panel.

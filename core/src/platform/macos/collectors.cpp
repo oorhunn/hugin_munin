@@ -19,7 +19,8 @@ using CfOwned = std::unique_ptr<const void, CfRelease>;
 
 std::optional<std::int64_t> capacity(CFURLRef url, CFStringRef key) {
     CFTypeRef raw = nullptr;
-    if (!CFURLCopyResourcePropertyForKey(url, key, &raw, nullptr) || raw == nullptr)
+    if (!CFURLCopyResourcePropertyForKey(url, key, static_cast<void *>(&raw), nullptr) ||
+        raw == nullptr)
         return std::nullopt;
     const CfOwned value(raw);
     std::int64_t bytes = 0;
@@ -89,7 +90,7 @@ Collected<std::vector<CpuCoreTicks>> collect_cpu_cores() {
     std::vector<CpuCoreTicks> cores;
     cores.reserve(count);
     for (unsigned int i = 0; i < count; ++i) {
-        const auto ticks = reinterpret_cast<processor_cpu_load_info_t>(info)[i].cpu_ticks;
+        auto *const ticks = reinterpret_cast<processor_cpu_load_info_t>(info)[i].cpu_ticks;
         cores.push_back({i, ticks[CPU_STATE_USER], ticks[CPU_STATE_SYSTEM], ticks[CPU_STATE_NICE],
                          ticks[CPU_STATE_IDLE]});
     }
@@ -132,7 +133,7 @@ Collected<std::vector<Gpu>> collect_gpus() {
         const CfOwned statistics(IORegistryEntryCreateCFProperty(
             service.service, CFSTR("PerformanceStatistics"), kCFAllocatorDefault, 0));
         if (statistics && CFGetTypeID(statistics.get()) == CFDictionaryGetTypeID()) {
-            const auto dictionary = static_cast<CFDictionaryRef>(statistics.get());
+            const auto *const dictionary = static_cast<CFDictionaryRef>(statistics.get());
             const auto utilization =
                 number(CFDictionaryGetValue(dictionary, CFSTR("Device Utilization %")));
             if (utilization && *utilization <= 100)
@@ -149,7 +150,7 @@ Collected<Disk> collect_disk() {
         kCFAllocatorDefault, reinterpret_cast<const UInt8 *>(root), 1, true));
     if (!owned_url)
         return std::unexpected("Cannot create the startup volume URL");
-    const auto url = static_cast<CFURLRef>(owned_url.get());
+    const auto *const url = static_cast<CFURLRef>(owned_url.get());
     const auto total = capacity(url, kCFURLVolumeTotalCapacityKey);
     const auto available = capacity(url, kCFURLVolumeAvailableCapacityForImportantUsageKey);
     if (!total || !available)

@@ -34,7 +34,8 @@ const Sample &SampleTracker::update(std::chrono::steady_clock::time_point now) {
 }
 
 std::chrono::duration<double> clamp_sample_interval(std::chrono::duration<double> interval) {
-    constexpr std::chrono::duration<double> shortest{0.25}, longest{10};
+    constexpr std::chrono::duration<double> shortest{0.25};
+    constexpr std::chrono::duration<double> longest{10};
     if (!(interval >= shortest))
         return shortest;
     return std::min(interval, longest);
@@ -43,7 +44,7 @@ std::chrono::duration<double> clamp_sample_interval(std::chrono::duration<double
 Sampler::Sampler(std::function<void(const Sample &)> callback, Sources sources, Intervals intervals)
     : interval_(intervals.sample),
       worker_([this, callback = std::move(callback), sources = std::move(sources),
-               disk_interval = intervals.disk](std::stop_token stop) {
+               disk_interval = intervals.disk](const std::stop_token &stop) {
           SampleTracker tracker(sources, disk_interval);
           // CPU usage needs two readings, so the second one should not wait for a long interval.
           bool first_pass = true;
@@ -60,7 +61,7 @@ Sampler::Sampler(std::function<void(const Sample &)> callback, Sources sources, 
 
 void Sampler::set_interval(std::chrono::duration<double> interval) {
     {
-        const std::lock_guard lock(mutex_);
+        const std::scoped_lock lock(mutex_);
         interval_ = interval;
         interval_changed_ = true;
     }
