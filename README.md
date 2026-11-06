@@ -14,9 +14,11 @@
 
 ## Status
 
-The macOS app shows live CPU, memory, disk, and GPU usage side by side around the notch. Hover over
-the notch to expand it, and open **Settings** from there to change the update interval, the metrics
-beside the notch, and launch at login.
+The macOS app shows live CPU, memory, disk, and GPU usage side by side around the notch, and
+keeps a clipboard history of text and images: hover over the notch (or press **Cmd+Shift+C**) and
+click an entry to put it back on the clipboard, then paste with **Cmd+V**. Open **Settings** from
+the expanded notch to change the update interval, the metrics beside the notch, the clipboard
+history length and its shortcut, and launch at login.
 
 ## Build and test
 

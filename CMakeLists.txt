@@ -7,18 +7,23 @@ if(NOT APPLE)
   message(FATAL_ERROR "Only the macOS backend is implemented so far")
 endif()
 
+# The pasteboard backend under core/src/platform/macos/ is Objective-C++.
+enable_language(OBJCXX)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(hm_core
+  core/src/clipboard.cpp
   core/src/metrics.cpp
   core/src/sampler.cpp
   core/src/platform/macos/collectors.cpp
+  core/src/platform/macos/pasteboard.mm
 )
 target_include_directories(hm_core PUBLIC core/include)
-target_link_libraries(hm_core PUBLIC "-framework CoreFoundation" "-framework IOKit")
+target_link_libraries(hm_core PUBLIC "-framework CoreFoundation" "-framework IOKit" "-framework AppKit")
 target_compile_options(hm_core PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(hm_bridge core/bridge/bridge.cpp)
@@ -36,6 +41,8 @@ set(CMAKE_Swift_COMPILATION_MODE wholemodule)
 add_executable(HuginMunin MACOSX_BUNDLE
   ui/macos/main.swift
   ui/macos/Monitor.swift
+  ui/macos/Clipboard.swift
+  ui/macos/HotKey.swift
   ui/macos/Notch.swift
   ui/macos/Settings.swift
   ui/macos/Style.swift
@@ -44,6 +51,9 @@ set_target_properties(HuginMunin PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/ui/macos/Info.plist.in
 )
 target_link_libraries(HuginMunin PRIVATE hm_bridge)
+# Linking AppKit through hm_core makes ld see libc++ twice, once from Swift and once from the
+# framework's re-exported interface; the duplicate is harmless and the warning is noise.
+target_link_options(HuginMunin PRIVATE "SHELL:-Xlinker -no_warn_duplicate_libraries")
 # swiftc writes dependency files next to the executable, named by build type, and codesign rejects
 # stray files in a bundle.
 add_custom_command(TARGET HuginMunin POST_BUILD
@@ -53,7 +63,7 @@ add_custom_command(TARGET HuginMunin POST_BUILD
 
 include(CTest)
 if(BUILD_TESTING)
-  foreach(test metrics_test collectors_test sampler_test bridge_test)
+  foreach(test metrics_test collectors_test sampler_test clipboard_test bridge_test)
     add_executable(${test} tests/${test}.cpp)
     target_link_libraries(${test} PRIVATE hm_bridge)
     target_compile_options(${test} PRIVATE -Wall -Wextra -Wpedantic)

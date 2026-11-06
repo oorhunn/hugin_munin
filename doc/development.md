@@ -26,9 +26,14 @@ To quit the app, hover over the notch and click **Quit**.
 | `metrics_test` | No | Metric calculations |
 | `sampler_test` | No | Sampling logic with fake sources |
 | `collectors_test` | Yes | The platform backend |
-| `bridge_test` | Yes | The C interface, through the real backend |
+| `clipboard_test` | No | The clipboard history and watcher with a fake pasteboard |
+| `bridge_test` | Yes | The C interface, through the real backend and pasteboard |
 
 Tests use the small `require` helper in `tests/check.hpp` rather than a framework.
+
+`bridge_test` temporarily replaces the clipboard's contents to exercise the copy/paste buffer,
+because there is no fake pasteboard behind the C interface. Run it when you can spare the
+clipboard for a few seconds.
 
 The tests do not cover Swift. After changing `ui/macos/` or the bridge, confirm the app stays
 running, because a Swift concurrency error can pass every test and still crash on launch:
@@ -61,8 +66,8 @@ C++ follows `.clang-format`. CI uses clang-format 23.1.4, and other versions may
 lines.
 
 ```sh
-git ls-files '*.cpp' '*.hpp' '*.h' | xargs clang-format --dry-run -Werror  # check
-git ls-files '*.cpp' '*.hpp' '*.h' | xargs clang-format -i                 # fix
+git ls-files '*.cpp' '*.hpp' '*.h' '*.mm' | xargs clang-format --dry-run -Werror  # check
+git ls-files '*.cpp' '*.hpp' '*.h' '*.mm' | xargs clang-format -i                 # fix
 ```
 
 Swift formatting is not checked yet.

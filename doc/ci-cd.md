@@ -9,7 +9,7 @@ demand.
 
 | Job | Runner | What it does |
 | --- | --- | --- |
-| Format | `ubuntu-24.04` | Checks C++ with clang-format 23.1.4 |
+| Format | `ubuntu-24.04` | Checks C++ and Objective-C++ with clang-format 23.1.4 |
 | Build and test | `macos-26` | Builds the app and tests in Debug and Release, runs the tests, and launches the app |
 | Sanitizers | `macos-26` | Runs the tests under ASan with UBSan, and under TSan |
 
