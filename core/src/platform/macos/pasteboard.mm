@@ -1,0 +1,79 @@
+#include "hm/pasteboard.hpp"
+
+#import <AppKit/AppKit.h>
+
+namespace hm {
+namespace {
+
+// NSPasteboard traffic goes through the autorelease pool, so every entry point needs one.
+class AutoreleasePool {
+  public:
+    AutoreleasePool() : pool_([NSAutoreleasePool new]) {}
+    ~AutoreleasePool() { [pool_ drain]; }
+    AutoreleasePool(const AutoreleasePool &) = delete;
+    AutoreleasePool &operator=(const AutoreleasePool &) = delete;
+
+  private:
+    NSAutoreleasePool *pool_;
+};
+
+// Reads the pasteboard's image as TIFF bytes, converting from PNG when that is all an app
+// offered. Empty when the pasteboard holds no supported image type.
+std::vector<std::uint8_t> image_bytes(NSPasteboard *pasteboard) {
+    if (NSData *tiff = [pasteboard dataForType:NSPasteboardTypeTIFF]) {
+        const auto *begin = static_cast<const std::uint8_t *>(tiff.bytes);
+        return {begin, begin + tiff.length};
+    }
+    if (NSData *png = [pasteboard dataForType:NSPasteboardTypePNG]) {
+        if (NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:png]) {
+            NSData *tiff = [rep representationUsingType:NSBitmapImageFileTypeTIFF properties:@{}];
+            if (tiff != nil) {
+                const auto *begin = static_cast<const std::uint8_t *>(tiff.bytes);
+                return {begin, begin + tiff.length};
+            }
+        }
+    }
+    return {};
+}
+
+} // namespace
+
+std::uint64_t pasteboard_change_count() {
+    const AutoreleasePool pool;
+    return static_cast<std::uint64_t>([NSPasteboard generalPasteboard].changeCount);
+}
+
+Collected<ClipboardContent> read_pasteboard() {
+    const AutoreleasePool pool;
+    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+    // Text wins when an app offers both, which is common: it is what the user most often meant to
+    // copy, and pasting it into a text field works everywhere.
+    if (NSString *text = [pasteboard stringForType:NSPasteboardTypeString]) {
+        if (text.length > 0)
+            return ClipboardContent{.kind = ClipboardContent::Kind::text,
+                                    .text = std::string(text.UTF8String)};
+    }
+    if (auto bytes = image_bytes(pasteboard); !bytes.empty())
+        return ClipboardContent{.kind = ClipboardContent::Kind::image, .bytes = std::move(bytes)};
+    return std::unexpected("The pasteboard holds no text or supported image");
+}
+
+Collected<void> write_pasteboard(const ClipboardContent &content) {
+    const AutoreleasePool pool;
+    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard clearContents];
+    if (content.kind == ClipboardContent::Kind::text) {
+        NSString *text = [NSString stringWithUTF8String:content.text.c_str()];
+        if (text == nil)
+            return std::unexpected("The text is not valid UTF-8");
+        if (![pasteboard setString:text forType:NSPasteboardTypeString])
+            return std::unexpected("Cannot write text to the pasteboard");
+        return {};
+    }
+    NSData *data = [NSData dataWithBytes:content.bytes.data() length:content.bytes.size()];
+    if (![pasteboard setData:data forType:NSPasteboardTypeTIFF])
+        return std::unexpected("Cannot write an image to the pasteboard");
+    return {};
+}
+
+} // namespace hm

@@ -4,8 +4,9 @@ import SwiftUI
 
 /// Where the notch is on a screen, in AppKit screen coordinates (origin bottom-left).
 struct NotchGeometry: Equatable {
-    static let wingWidth: CGFloat = 76
-    static let expandedSize = CGSize(width: 480, height: 112)
+    static let metricWidth: CGFloat = 62
+    static let wingPadding: CGFloat = 14
+    static let expandedSize = CGSize(width: 640, height: 320)
 
     let screenFrame: NSRect
     let notchWidth: CGFloat // 0 on screens without a notch
@@ -30,7 +31,15 @@ struct NotchGeometry: Equatable {
         }
     }
 
-    var collapsedSize: CGSize { CGSize(width: notchWidth + 2 * Self.wingWidth, height: height) }
+    /// Width beside the notch for `metrics` labels. An empty side keeps room to catch the pointer.
+    static func wingWidth(metrics: Int) -> CGFloat {
+        wingPadding + metricWidth * CGFloat(max(metrics, 1))
+    }
+
+    /// Both wings match the wider one, so the panel stays centred on the notch.
+    func collapsedSize(wingMetrics: Int) -> CGSize {
+        CGSize(width: notchWidth + 2 * Self.wingWidth(metrics: wingMetrics), height: height)
+    }
 
     /// Rectangle of the given size hanging from the top centre of the screen.
     func rect(_ size: CGSize) -> NSRect {
@@ -57,20 +66,18 @@ final class NotchController {
     /// Catches the pointer over the collapsed notch while `panel` lets clicks through.
     private let trigger: NSPanel
     private let state: NotchState
+    private let settings: Settings
     private let triggerTracker = HoverTracker()
     private let panelTracker = HoverTracker()
     private var screenObserver: NSObjectProtocol?
     private var collapseWork: DispatchWorkItem?
 
-    init(monitor: Monitor, settings: Settings, openSettings: @escaping () -> Void) {
+    init(monitor: Monitor, settings: Settings, clipboard: ClipboardStore,
+         openSettings: @escaping () -> Void) {
+        self.settings = settings
         state = NotchState(geometry: NotchGeometry(screen: Self.preferredScreen()))
         panel = Self.makePanel(level: Int(CGWindowLevelForKey(.mainMenuWindow)) + 3)
         panel.ignoresMouseEvents = true
-
-        let hosting = NSHostingView(rootView: NotchView(monitor: monitor, settings: settings,
-                                                        state: state, openSettings: openSettings))
-        hosting.sizingOptions = []
-        panel.contentView = hosting
 
         // Sits just under the panel, which draws the notch over it. A fully transparent window
         // would let the pointer through, so it gets an invisible sliver of alpha.
@@ -79,6 +86,16 @@ final class NotchController {
         catcher.wantsLayer = true
         catcher.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
         trigger.contentView = catcher
+
+        // All stored properties are set, so the collapse closure may capture self.
+        let hosting = NSHostingView(rootView: NotchView(monitor: monitor, settings: settings,
+                                                        clipboard: clipboard, state: state,
+                                                        openSettings: openSettings,
+                                                        collapse: { [weak self] in
+                                                            self?.setExpanded(false)
+                                                        }))
+        hosting.sizingOptions = []
+        panel.contentView = hosting
 
         triggerTracker.onEnter = { [weak self] in self?.setExpanded(true) }
         triggerTracker.attach(to: catcher)
@@ -115,13 +132,14 @@ final class NotchController {
         NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main ?? NSScreen.screens.first
     }
 
-    private func layout() {
+    func layout() {
         state.geometry = NotchGeometry(screen: Self.preferredScreen())
         // The window always has the expanded size; the transparent part ignores clicks while collapsed.
         let size = CGSize(width: NotchGeometry.expandedSize.width,
                           height: NotchGeometry.expandedSize.height + state.geometry.height)
         panel.setFrame(state.geometry.rect(size), display: true)
-        trigger.setFrame(state.geometry.rect(state.geometry.collapsedSize), display: false)
+        let collapsed = state.geometry.collapsedSize(wingMetrics: settings.leftMetrics.count)
+        trigger.setFrame(state.geometry.rect(collapsed), display: false)
     }
 
     private func scheduleCollapse() {
@@ -148,6 +166,10 @@ final class NotchController {
             panelTracker.detach()
         }
     }
+
+    /// Expands or collapses the notch, for the global keyboard shortcut. The panel then stays
+    /// open until the pointer leaves it or an entry is restored.
+    func toggleExpanded() { setExpanded(!state.expanded) }
 }
 
 /// Owns one tracking area that reports the pointer entering and leaving a view.
@@ -181,15 +203,17 @@ private final class HoverTracker: NSResponder {
 struct NotchView: View {
     let monitor: Monitor
     let settings: Settings
+    let clipboard: ClipboardStore
     let state: NotchState
     let openSettings: () -> Void
+    let collapse: () -> Void
 
     var body: some View {
         let geometry = state.geometry
         let size = state.expanded
             ? CGSize(width: NotchGeometry.expandedSize.width,
                      height: NotchGeometry.expandedSize.height + geometry.height)
-            : geometry.collapsedSize
+            : geometry.collapsedSize(wingMetrics: settings.leftMetrics.count)
         let radius: CGFloat = state.expanded ? 24 : 10
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
@@ -198,7 +222,8 @@ struct NotchView: View {
                 VStack(spacing: 0) {
                     wings.frame(height: geometry.height)
                     if state.expanded {
-                        NotchPanel(system: monitor.state, openSettings: openSettings)
+                        NotchPanel(system: monitor.state, clipboard: clipboard,
+                                   openSettings: openSettings, collapse: collapse)
                             .padding(.horizontal, 20)
                             .padding(.bottom, 12)
                             .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
@@ -213,18 +238,26 @@ struct NotchView: View {
         .environment(\.colorScheme, .dark)
     }
 
-    /// The metrics chosen in Settings, one on each side of the notch.
+    /// The metrics chosen in Settings, split across the two sides of the notch.
     private var wings: some View {
-        HStack(spacing: 0) {
-            WingLabel(symbol: settings.leftMetric.symbol,
-                      value: settings.leftMetric.percent(in: monitor.state))
-                .frame(width: NotchGeometry.wingWidth)
+        let width = NotchGeometry.wingWidth(metrics: settings.leftMetrics.count)
+        return HStack(spacing: 0) {
+            wing(settings.leftMetrics).frame(width: width)
             Spacer(minLength: state.geometry.notchWidth)
-            WingLabel(symbol: settings.rightMetric.symbol,
-                      value: settings.rightMetric.percent(in: monitor.state))
-                .frame(width: NotchGeometry.wingWidth)
+            wing(settings.rightMetrics).frame(width: width)
         }
         .padding(.horizontal, state.expanded ? 12 : 0)
+    }
+}
+
+private extension NotchView {
+    func wing(_ metrics: [Metric]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(metrics) { metric in
+                WingLabel(symbol: metric.symbol, value: metric.percent(in: monitor.state))
+                    .frame(width: NotchGeometry.metricWidth)
+            }
+        }
     }
 }
 
@@ -244,14 +277,16 @@ private struct WingLabel: View {
     }
 }
 
-/// Compact readout shown when the notch is expanded.
+/// Compact readout shown when the notch is expanded, with the clipboard history below it.
 private struct NotchPanel: View {
     let system: SystemState
+    let clipboard: ClipboardStore
     let openSettings: () -> Void
+    let collapse: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack(alignment: .top, spacing: 20) {
+            HStack(alignment: .top, spacing: 16) {
                 Stat(title: "CPU", percent: system.cpuPercent,
                      detail: system.coreCount == 0 ? "–" : "\(system.coreCount) cores")
                 Stat(title: "Memory", percent: system.memoryPercent,
@@ -259,8 +294,9 @@ private struct NotchPanel: View {
                          : "\(Format.bytes(system.memoryUsed)) of \(Format.bytes(system.memoryTotal))")
                 Stat(title: "Disk", percent: system.diskPercent,
                      detail: system.diskPercent == nil ? "–" : "\(Format.bytes(system.diskFree)) free")
+                Stat(title: "GPU", percent: system.gpuPercent,
+                     detail: system.gpuCoreCount == 0 ? "–" : "\(system.gpuCoreCount) cores")
             }
-            Spacer(minLength: 0)
             HStack {
                 Button("Settings", action: openSettings)
                 Spacer()
@@ -268,8 +304,88 @@ private struct NotchPanel: View {
             }
             .buttonStyle(.borderless)
             .font(.caption)
+            Divider().overlay(.white.opacity(0.15))
+            ClipboardList(store: clipboard, collapse: collapse)
         }
         .padding(.top, 8)
+    }
+}
+
+/// The clipboard history: click an entry to put it back on the clipboard, then paste with Cmd+V.
+private struct ClipboardList: View {
+    let store: ClipboardStore
+    let collapse: () -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Clipboard")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Clear") { store.clear() }
+                    .disabled(store.entries.isEmpty)
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            if store.entries.isEmpty {
+                Text("Nothing copied yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 60)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(store.entries) { entry in
+                            ClipboardRow(entry: entry) {
+                                store.restore(entry.id)
+                                collapse()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ClipboardRow: View {
+    let entry: ClipboardItem
+    let restore: () -> Void
+
+    var body: some View {
+        Button(action: restore) {
+            HStack(spacing: 8) {
+                if let image = entry.image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 20, height: 20)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                } else {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Text(entry.preview.isEmpty ? "Image" : entry.preview)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 8)
+                if entry.isImage {
+                    Text(Format.bytes(UInt64(entry.size)))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Text(entry.capturedAt, format: .relative(presentation: .named))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -4,6 +4,76 @@ What has been accomplished, newest first.
 
 ## 2026-11-05
 
+- Added the copy/paste buffer: a clipboard history of text and images, restored on click.
+  - The core keeps a bounded history (`core/src/clipboard.cpp`): 50 entries by default, 1 to 500
+    in Settings, and at most 64 MiB of payload in total, evicting the oldest first. Content equal
+    to an existing entry reuses it and moves it to the front, so each distinct payload appears
+    once, most recent first. Ids are never reused.
+  - The pasteboard sits behind a second platform boundary (`core/include/hm/pasteboard.hpp`),
+    implemented for macOS in `core/src/platform/macos/pasteboard.mm` with `NSPasteboard`: text is
+    preferred when both are present, images are kept as TIFF, and PNG is converted. The watcher
+    polls the change count every 0.5 s, because there is no event API for other processes' copies
+    without privileges. Its own writes are marked seen, so a restore is not recorded as a copy.
+  - The bridge grew the `hm_clipboard_*` C API: a malloc'd deep-copy snapshot with a 255-byte
+    UTF-8 text preview per entry, capacity changes while running, restore, and clear.
+  - The notch panel now shows the history below the metrics: click an entry to put it back on the
+    clipboard, then paste with Cmd+V. Rows show a thumbnail, the preview, the byte size, and a
+    relative time; a Clear button empties the history. The expanded panel grew from 112 to 320
+    points to fit the list.
+  - A global shortcut opens the history by expanding the notch: Cmd+Shift+C by default, editable
+    in Settings through a key recorder, saved in UserDefaults with the capacity. It is registered
+    with Carbon's `RegisterEventHotKey`, which needs no Accessibility permission.
+  - Restoring writes the entry back to the pasteboard and moves it to the front. Pasting into the
+    frontmost app automatically would need Accessibility permission, so the user pastes with
+    Cmd+V; this is the documented semantic.
+- Fixed during testing: a poll can land inside another process's pasteboard write, between the
+  clear and the new contents, when the change count has already moved but the data is not there.
+  The first version marked such a count as seen and lost the copy forever; `bridge_test` failed
+  about two runs in three because of it. The tracker now retries an empty or failed read once on
+  the next poll before treating the count as settled.
+- Tests:
+  - `clipboard_test` drives the core with a fake pasteboard: history and dedup rules, capacity
+    clamps and eviction, the byte budget, image and kind handling, the poll's retry for mid-write
+    and failed reads, own-write suppression, and the watcher thread's notifications, restore,
+    live capacity change, and clear.
+  - `bridge_test` gained a live pasteboard round trip: start, two text copies, restore, image
+    bytes across the bridge, clear, stop. It temporarily replaces the clipboard's contents, which
+    is unavoidable behind the C interface.
+- Verified on macOS 27.0.1 (Apple clang 21, Swift 6):
+  - All five test programs pass in Debug, and under ASan with UBSan. `clipboard_test` and
+    `bridge_test` pass under TSan; TSan first flagged a race in the test's own fake pasteboard,
+    fixed by giving the fake a mutex, like the system gives the real one.
+    `bridge_test` was run five more times to check the mid-write fix holds.
+  - `clang-format` is clean, and the check now covers `*.mm` in CI and the docs, because the
+    pasteboard backend is Objective-C++.
+  - `scripts/smoke_test.sh` passes: the app stays running for 10 s. Launched by hand, it also
+    stayed alive through two real copies made with `pbcopy`.
+- Not verified by hand: the notch list itself and the Cmd+Shift+C shortcut on a real keyboard, as
+  that needs an interactive session on a Mac with a notch. A shortcut that another app already
+  registered is silently unavailable; the register call's result is not surfaced in the UI. The
+  list also has no keyboard navigation, and its relative timestamps refresh only when the
+  history changes.
+- Added GPU usage and put CPU, memory, disk, and GPU side by side in the notch and its panel.
+  - Ported GPU reading from `resource_visualizer`, keeping only utilization and core count. With
+    several GPUs, the notch shows the busiest one.
+  - Replaced the left and right pickers in Settings with a checkbox per metric. The wings and their
+    hover area resize to fit. The panel widened from 480 to 640 points and always shows all four.
+- Verified on a MacBook Pro with an M2 Pro:
+  - All four test programs pass.
+  - GPU core count matched the system (19). Under a sustained Metal load, GPU read 99%, the same as
+    `ioreg`, then fell back afterwards. A read takes about 25 µs.
+  - The app showed all four metrics, with two per side. Three metrics split as two and one. Two
+    metrics narrowed the notch live.
+  - With two metrics, hovering inside the narrower wing expanded the panel 5 of 5 times, and
+    hovering at the old outer edge did not, 5 of 5 times.
+- Known issues:
+  - The driver seems to report GPU activity since the last read, so a second read within
+    milliseconds returns 0. With `ioreg`, whichever ran second read 0. Another tool polling the GPU
+    at the same moment could make this app briefly show 0%.
+  - One hover inside the wing failed to expand the panel during testing. It did not happen again in
+    the 7 later attempts on the same code, and the cause is unknown.
+  - The wider notch covers more of the menu bar, so it can hide menu bar items. This was not
+    checked with a full menu bar.
 - Published the project to https://github.com/oorhunn/hugin_munin as a public repository.
 - Added the settings menu UI and the README icon.
   - A Settings button in the expanded notch panel opens a small window with the update interval,
