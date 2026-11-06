@@ -34,6 +34,12 @@ int main() {
     const std::array<CpuCoreTicks, 1> other_core{{{7, 1, 1, 1, 1}}};
     require(!hm::average_busy(before, other_core), "Average needs a comparable core");
 
+    require(!hm::busiest_gpu({}), "No GPU");
+    const std::array<hm::Gpu, 3> gpus{{{20.0, 10}, {std::nullopt, 8}, {70.0, std::nullopt}}};
+    require(hm::busiest_gpu(gpus) == 70.0, "Busiest GPU skips unknown ones");
+    const std::array<hm::Gpu, 1> silent_gpu{{{std::nullopt, 8}}};
+    require(!hm::busiest_gpu(silent_gpu), "A GPU without utilization is unknown");
+
     require(!hm::used_percent(1, 0), "Percent of zero total");
     require(near(*hm::used_percent(25, 100), 25), "Percent");
 

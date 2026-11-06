@@ -13,7 +13,9 @@ working in this repository. `AGENTS.md` points here, so this file is the single 
 - `ui/macos/`: the SwiftUI app. It builds to `build/HuginMunin.app`.
 - `tests/`: `metrics_test` and `sampler_test` need no backend. `collectors_test` and `bridge_test`
   read the live system.
-- `doc/`: progress log and decisions.
+- `doc/`: `README.md` is the index, with the progress log, decisions, and a guide per topic.
+- `scripts/`: helpers used both locally and in CI.
+- `.github/workflows/`: `ci.yml` checks every change, and `release.yml` publishes tagged releases.
 
 ## Build and test
 
@@ -26,7 +28,11 @@ open build/HuginMunin.app
 
 The tests cover the core and the C bridge, not the Swift UI. After changing `ui/macos/` or the
 bridge, launch the app and confirm it stays running, because a Swift concurrency error can pass
-every test and still crash the app on launch.
+every test and still crash the app on launch. `scripts/smoke_test.sh` does this check, and CI runs
+it too. CI has no notch, so notch behavior still needs a run on a real MacBook.
+
+Keep C++ formatted, because CI fails otherwise. See `doc/development.md` for the sanitizer presets
+and the format command, and `doc/ci-cd.md` for releases.
 
 ## Rules
 
@@ -38,6 +44,7 @@ every test and still crash the app on launch.
 - Record decisions that shape the project in `doc/decisions.md`. Move an open question to the
   decided section once it is settled, and include the reason.
 - Keep `README.md` accurate when setup, usage, or project status changes.
+- Keep the guides in `doc/` accurate in the same task as the code they describe.
 - Only record what actually happened. Note anything skipped, failing, or unverified.
 
 ### Language

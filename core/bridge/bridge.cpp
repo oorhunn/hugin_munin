@@ -17,7 +17,9 @@ hm_sample to_c(const hm::Sample &sample) {
     out.cpu_percent = sample.cpu_percent.value_or(unknown);
     out.memory_percent = unknown;
     out.disk_percent = unknown;
+    out.gpu_percent = sample.gpu_percent.value_or(unknown);
     out.core_count = sample.core_count;
+    out.gpu_core_count = sample.gpu_core_count.value_or(0);
     if (sample.memory) {
         out.memory_used = sample.memory->used;
         out.memory_total = sample.memory->total;
@@ -26,7 +28,8 @@ hm_sample to_c(const hm::Sample &sample) {
     }
     if (sample.disk) {
         out.disk_free = sample.disk->total - sample.disk->used;
-        out.disk_percent = hm::used_percent(sample.disk->used, sample.disk->total).value_or(unknown);
+        out.disk_percent =
+            hm::used_percent(sample.disk->used, sample.disk->total).value_or(unknown);
     }
     return out;
 }
@@ -36,7 +39,8 @@ extern "C" {
 hm_sampler *hm_sampler_start(hm_sample_callback callback, void *context, double interval_seconds) {
     try {
         hm::Intervals intervals;
-        intervals.sample = hm::clamp_sample_interval(std::chrono::duration<double>(interval_seconds));
+        intervals.sample =
+            hm::clamp_sample_interval(std::chrono::duration<double>(interval_seconds));
         return new hm_sampler{hm::Sampler(
             [callback, context](const hm::Sample &sample) {
                 const auto out = to_c(sample);

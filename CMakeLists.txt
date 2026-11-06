@@ -18,7 +18,7 @@ add_library(hm_core
   core/src/platform/macos/collectors.cpp
 )
 target_include_directories(hm_core PUBLIC core/include)
-target_link_libraries(hm_core PUBLIC "-framework CoreFoundation")
+target_link_libraries(hm_core PUBLIC "-framework CoreFoundation" "-framework IOKit")
 target_compile_options(hm_core PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(hm_bridge core/bridge/bridge.cpp)
@@ -27,6 +27,8 @@ target_link_libraries(hm_bridge PUBLIC hm_core)
 target_compile_options(hm_bridge PRIVATE -Wall -Wextra -Wpedantic)
 
 # The macOS UI. CMake only supports Swift with the Ninja and Xcode generators.
+# Without an explicit target, swiftc ignores the deployment target and builds for the host's macOS.
+set(CMAKE_Swift_COMPILER_TARGET ${CMAKE_SYSTEM_PROCESSOR}-apple-macosx${CMAKE_OSX_DEPLOYMENT_TARGET})
 enable_language(Swift)
 set(CMAKE_Swift_LANGUAGE_VERSION 6)
 # Incremental mode fails on relink with swiftc's cannotResolveTempPath error.
@@ -56,5 +58,9 @@ if(BUILD_TESTING)
     target_link_libraries(${test} PRIVATE hm_bridge)
     target_compile_options(${test} PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME ${test} COMMAND ${test})
+    list(APPEND hm_test_targets ${test})
   endforeach()
+  # The sanitizer presets build this rather than `all`, because the Swift app does not link against
+  # sanitized C++ objects.
+  add_custom_target(hm_tests DEPENDS ${hm_test_targets})
 endif()
