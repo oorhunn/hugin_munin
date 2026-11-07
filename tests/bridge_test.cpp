@@ -38,6 +38,9 @@ int main() {
     require(std::isfinite(sample.cpu_percent), "CPU is known after two passes");
     require(sample.cpu_percent >= 0 && sample.cpu_percent <= 100, "CPU is a percentage");
     require(sample.core_count > 0, "Core count");
+    require(std::isnan(sample.gpu_percent) ||
+                (sample.gpu_percent >= 0 && sample.gpu_percent <= 100),
+            "GPU is unknown or a percentage");
     require(sample.memory_total > 0 && sample.memory_used <= sample.memory_total, "Memory sizes");
     require(sample.memory_percent > 0 && sample.memory_percent <= 100, "Memory percent");
     require(sample.disk_percent > 0 && sample.disk_percent <= 100, "Disk percent");

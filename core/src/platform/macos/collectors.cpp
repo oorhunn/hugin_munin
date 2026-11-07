@@ -1,10 +1,12 @@
 #include "hm/collectors.hpp"
 
 #include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOKitLib.h>
 #include <mach/mach.h>
 #include <mach/processor_info.h>
 #include <sys/sysctl.h>
 
+#include <cmath>
 #include <memory>
 
 namespace hm {
@@ -25,6 +27,43 @@ std::optional<std::int64_t> capacity(CFURLRef url, CFStringRef key) {
         !CFNumberGetValue(static_cast<CFNumberRef>(raw), kCFNumberSInt64Type, &bytes))
         return std::nullopt;
     return bytes;
+}
+
+// Empty when the value is missing, not finite, or negative.
+std::optional<double> number(CFTypeRef value) {
+    double result = 0;
+    if (!value || CFGetTypeID(value) != CFNumberGetTypeID() ||
+        !CFNumberGetValue(static_cast<CFNumberRef>(value), kCFNumberDoubleType, &result) ||
+        !std::isfinite(result) || result < 0)
+        return std::nullopt;
+    return result;
+}
+
+struct GpuService {
+    io_service_t service;
+    std::optional<std::size_t> core_count;
+};
+
+// The accelerators and their core counts, found once; only the statistics change between reads.
+const std::vector<GpuService> &gpu_services() {
+    static const auto services = [] {
+        std::vector<GpuService> result;
+        io_iterator_t iterator = IO_OBJECT_NULL;
+        if (IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"),
+                                         &iterator) != KERN_SUCCESS)
+            return result;
+        while (const io_service_t service = IOIteratorNext(iterator)) {
+            GpuService gpu{service, std::nullopt}; // keeps the iterator's reference
+            const CfOwned cores(IORegistryEntryCreateCFProperty(service, CFSTR("gpu-core-count"),
+                                                                kCFAllocatorDefault, 0));
+            if (const auto count = number(cores.get()); count && *count > 0)
+                gpu.core_count = static_cast<std::size_t>(*count);
+            result.push_back(gpu);
+        }
+        IOObjectRelease(iterator);
+        return result;
+    }();
+    return services;
 }
 
 } // namespace
@@ -74,7 +113,8 @@ Collected<Memory> collect_memory() {
                              : 0);
     memory.wired = page * vm.wire_count;
     memory.compressed = page * vm.compressor_page_count;
-    memory.cached = page * (static_cast<std::uint64_t>(vm.external_page_count) + vm.purgeable_count);
+    memory.cached =
+        page * (static_cast<std::uint64_t>(vm.external_page_count) + vm.purgeable_count);
     memory.used = memory.app + memory.wired + memory.compressed;
     xsw_usage swap{};
     size = sizeof(swap);
@@ -83,6 +123,24 @@ Collected<Memory> collect_memory() {
         memory.swap_total = swap.xsu_total;
     }
     return memory;
+}
+
+Collected<std::vector<Gpu>> collect_gpus() {
+    std::vector<Gpu> gpus;
+    for (const auto &service : gpu_services()) {
+        Gpu gpu{.utilization = std::nullopt, .core_count = service.core_count};
+        const CfOwned statistics(IORegistryEntryCreateCFProperty(
+            service.service, CFSTR("PerformanceStatistics"), kCFAllocatorDefault, 0));
+        if (statistics && CFGetTypeID(statistics.get()) == CFDictionaryGetTypeID()) {
+            const auto dictionary = static_cast<CFDictionaryRef>(statistics.get());
+            const auto utilization =
+                number(CFDictionaryGetValue(dictionary, CFSTR("Device Utilization %")));
+            if (utilization && *utilization <= 100)
+                gpu.utilization = utilization;
+        }
+        gpus.push_back(gpu);
+    }
+    return gpus;
 }
 
 Collected<Disk> collect_disk() {

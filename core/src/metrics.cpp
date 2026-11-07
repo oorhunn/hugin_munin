@@ -38,6 +38,14 @@ std::optional<double> average_busy(std::span<const CpuCoreTicks> before,
     return sum / static_cast<double>(count);
 }
 
+std::optional<double> busiest_gpu(std::span<const Gpu> gpus) {
+    std::optional<double> busiest;
+    for (const auto &gpu : gpus)
+        if (gpu.utilization && (!busiest || *gpu.utilization > *busiest))
+            busiest = gpu.utilization;
+    return busiest;
+}
+
 std::optional<double> used_percent(std::uint64_t used, std::uint64_t total) {
     if (total == 0)
         return std::nullopt;

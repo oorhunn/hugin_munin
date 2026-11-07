@@ -4,8 +4,9 @@ import SwiftUI
 
 /// Where the notch is on a screen, in AppKit screen coordinates (origin bottom-left).
 struct NotchGeometry: Equatable {
-    static let wingWidth: CGFloat = 76
-    static let expandedSize = CGSize(width: 480, height: 112)
+    static let metricWidth: CGFloat = 62
+    static let wingPadding: CGFloat = 14
+    static let expandedSize = CGSize(width: 640, height: 238)
 
     let screenFrame: NSRect
     let notchWidth: CGFloat // 0 on screens without a notch
@@ -30,7 +31,15 @@ struct NotchGeometry: Equatable {
         }
     }
 
-    var collapsedSize: CGSize { CGSize(width: notchWidth + 2 * Self.wingWidth, height: height) }
+    /// Width beside the notch for `metrics` labels. An empty side keeps room to catch the pointer.
+    static func wingWidth(metrics: Int) -> CGFloat {
+        wingPadding + metricWidth * CGFloat(max(metrics, 1))
+    }
+
+    /// Both wings match the wider one, so the panel stays centred on the notch.
+    func collapsedSize(wingMetrics: Int) -> CGSize {
+        CGSize(width: notchWidth + 2 * Self.wingWidth(metrics: wingMetrics), height: height)
+    }
 
     /// Rectangle of the given size hanging from the top centre of the screen.
     func rect(_ size: CGSize) -> NSRect {
@@ -42,6 +51,8 @@ struct NotchGeometry: Equatable {
 @MainActor @Observable
 final class NotchState {
     var expanded = false
+    var dragging = false
+    let shelf = FileShelf()
     var geometry: NotchGeometry
 
     init(geometry: NotchGeometry) { self.geometry = geometry }
@@ -57,28 +68,39 @@ final class NotchController {
     /// Catches the pointer over the collapsed notch while `panel` lets clicks through.
     private let trigger: NSPanel
     private let state: NotchState
+    private let settings: Settings
     private let triggerTracker = HoverTracker()
     private let panelTracker = HoverTracker()
     private var screenObserver: NSObjectProtocol?
     private var collapseWork: DispatchWorkItem?
 
     init(monitor: Monitor, settings: Settings, openSettings: @escaping () -> Void) {
+        self.settings = settings
         state = NotchState(geometry: NotchGeometry(screen: Self.preferredScreen()))
         panel = Self.makePanel(level: Int(CGWindowLevelForKey(.mainMenuWindow)) + 3)
         panel.ignoresMouseEvents = true
 
-        let hosting = NSHostingView(rootView: NotchView(monitor: monitor, settings: settings,
-                                                        state: state, openSettings: openSettings))
+        let hosting = ShelfDropHosting(rootView: AnyView(NotchView(monitor: monitor, settings: settings,
+                                                        state: state, openSettings: openSettings)))
         hosting.sizingOptions = []
         panel.contentView = hosting
 
         // Sits just under the panel, which draws the notch over it. A fully transparent window
         // would let the pointer through, so it gets an invisible sliver of alpha.
         trigger = Self.makePanel(level: Int(CGWindowLevelForKey(.mainMenuWindow)) + 2)
-        let catcher = NSView()
+        let catcher = ShelfDropHosting(rootView: AnyView(Color.clear))
         catcher.wantsLayer = true
         catcher.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
         trigger.contentView = catcher
+
+        for receiver in [hosting, catcher] {
+            receiver.onEnter = { [weak self] in self?.setExpanded(true) }
+            receiver.onExit = { [weak self] in self?.scheduleCollapse() }
+            receiver.onDrop = { [weak self] urls in
+                self?.state.shelf.add(urls)
+                self?.setExpanded(true)
+            }
+        }
 
         triggerTracker.onEnter = { [weak self] in self?.setExpanded(true) }
         triggerTracker.attach(to: catcher)
@@ -115,18 +137,23 @@ final class NotchController {
         NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main ?? NSScreen.screens.first
     }
 
-    private func layout() {
+    func layout() {
         state.geometry = NotchGeometry(screen: Self.preferredScreen())
         // The window always has the expanded size; the transparent part ignores clicks while collapsed.
         let size = CGSize(width: NotchGeometry.expandedSize.width,
                           height: NotchGeometry.expandedSize.height + state.geometry.height)
         panel.setFrame(state.geometry.rect(size), display: true)
-        trigger.setFrame(state.geometry.rect(state.geometry.collapsedSize), display: false)
+        let collapsed = state.geometry.collapsedSize(wingMetrics: settings.leftMetrics.count)
+        trigger.setFrame(state.geometry.rect(collapsed), display: false)
     }
 
     private func scheduleCollapse() {
-        guard state.expanded, collapseWork == nil else { return }
-        let work = DispatchWorkItem { [weak self] in self?.setExpanded(false) }
+        guard state.expanded, !state.dragging, collapseWork == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.collapseWork = nil
+            if !self.state.dragging { self.setExpanded(false) }
+        }
         collapseWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
     }
@@ -189,7 +216,7 @@ struct NotchView: View {
         let size = state.expanded
             ? CGSize(width: NotchGeometry.expandedSize.width,
                      height: NotchGeometry.expandedSize.height + geometry.height)
-            : geometry.collapsedSize
+            : geometry.collapsedSize(wingMetrics: settings.leftMetrics.count)
         let radius: CGFloat = state.expanded ? 24 : 10
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
@@ -198,7 +225,10 @@ struct NotchView: View {
                 VStack(spacing: 0) {
                     wings.frame(height: geometry.height)
                     if state.expanded {
-                        NotchPanel(system: monitor.state, openSettings: openSettings)
+                        VStack(spacing: 10) {
+                            NotchPanel(system: monitor.state, openSettings: openSettings)
+                            FileShelfView(state: state)
+                        }
                             .padding(.horizontal, 20)
                             .padding(.bottom, 12)
                             .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
@@ -213,18 +243,26 @@ struct NotchView: View {
         .environment(\.colorScheme, .dark)
     }
 
-    /// The metrics chosen in Settings, one on each side of the notch.
+    /// The metrics chosen in Settings, split across the two sides of the notch.
     private var wings: some View {
-        HStack(spacing: 0) {
-            WingLabel(symbol: settings.leftMetric.symbol,
-                      value: settings.leftMetric.percent(in: monitor.state))
-                .frame(width: NotchGeometry.wingWidth)
+        let width = NotchGeometry.wingWidth(metrics: settings.leftMetrics.count)
+        return HStack(spacing: 0) {
+            wing(settings.leftMetrics).frame(width: width)
             Spacer(minLength: state.geometry.notchWidth)
-            WingLabel(symbol: settings.rightMetric.symbol,
-                      value: settings.rightMetric.percent(in: monitor.state))
-                .frame(width: NotchGeometry.wingWidth)
+            wing(settings.rightMetrics).frame(width: width)
         }
         .padding(.horizontal, state.expanded ? 12 : 0)
+    }
+}
+
+private extension NotchView {
+    func wing(_ metrics: [Metric]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(metrics) { metric in
+                WingLabel(symbol: metric.symbol, value: metric.percent(in: monitor.state))
+                    .frame(width: NotchGeometry.metricWidth)
+            }
+        }
     }
 }
 
@@ -251,7 +289,7 @@ private struct NotchPanel: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack(alignment: .top, spacing: 20) {
+            HStack(alignment: .top, spacing: 16) {
                 Stat(title: "CPU", percent: system.cpuPercent,
                      detail: system.coreCount == 0 ? "–" : "\(system.coreCount) cores")
                 Stat(title: "Memory", percent: system.memoryPercent,
@@ -259,6 +297,8 @@ private struct NotchPanel: View {
                          : "\(Format.bytes(system.memoryUsed)) of \(Format.bytes(system.memoryTotal))")
                 Stat(title: "Disk", percent: system.diskPercent,
                      detail: system.diskPercent == nil ? "–" : "\(Format.bytes(system.diskFree)) free")
+                Stat(title: "GPU", percent: system.gpuPercent,
+                     detail: system.gpuCoreCount == 0 ? "–" : "\(system.gpuCoreCount) cores")
             }
             Spacer(minLength: 0)
             HStack {

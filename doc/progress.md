@@ -2,8 +2,45 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-06
+
+- Investigated a Swift 6.3.3 CI compiler crash generating an isolated Boolean callback wrapper.
+  Shelf callback annotations and then direct notch state access did not resolve it. Located a
+  remaining bound-method conversion in the Launch at login binding and replaced it with an
+  explicit closure. Local Swift 6.4 build, tests, and smoke test pass. All five CI checks passed
+  on commit `ced4a04`, including Debug and Release builds on Swift 6.3.3.
+
+- Added a temporary file/folder shelf to the expanded notch, with drops onto the collapsed trigger
+  opening the panel. Shelf entries show file icons, support dragging to external destinations,
+  and have a remove button that leaves originals intact.
+- Added C++ shelf membership and a C bridge, including normalization and duplicate rejection.
+- Built the app, passed all five test programs, and passed the 10-second launch smoke test.
+- Real Finder drag/drop, copy/move, cancellation, scrolling, and physical notch interactions
+  remain unverified; the manual checklist is in `development.md`.
+
 ## 2026-11-05
 
+- Added GPU usage and put CPU, memory, disk, and GPU side by side in the notch and its panel.
+  - Ported GPU reading from `resource_visualizer`, keeping only utilization and core count. With
+    several GPUs, the notch shows the busiest one.
+  - Replaced the left and right pickers in Settings with a checkbox per metric. The wings and their
+    hover area resize to fit. The panel widened from 480 to 640 points and always shows all four.
+- Verified on a MacBook Pro with an M2 Pro:
+  - All four test programs pass.
+  - GPU core count matched the system (19). Under a sustained Metal load, GPU read 99%, the same as
+    `ioreg`, then fell back afterwards. A read takes about 25 µs.
+  - The app showed all four metrics, with two per side. Three metrics split as two and one. Two
+    metrics narrowed the notch live.
+  - With two metrics, hovering inside the narrower wing expanded the panel 5 of 5 times, and
+    hovering at the old outer edge did not, 5 of 5 times.
+- Known issues:
+  - The driver seems to report GPU activity since the last read, so a second read within
+    milliseconds returns 0. With `ioreg`, whichever ran second read 0. Another tool polling the GPU
+    at the same moment could make this app briefly show 0%.
+  - One hover inside the wing failed to expand the panel during testing. It did not happen again in
+    the 7 later attempts on the same code, and the cause is unknown.
+  - The wider notch covers more of the menu bar, so it can hide menu bar items. This was not
+    checked with a full menu bar.
 - Published the project to https://github.com/oorhunn/hugin_munin as a public repository.
 - Added the settings menu UI and the README icon.
   - A Settings button in the expanded notch panel opens a small window with the update interval,
