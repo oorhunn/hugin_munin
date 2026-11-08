@@ -4,6 +4,15 @@ What has been accomplished, newest first.
 
 ## 2026-11-08
 
+- Changed the default clipboard shortcut to Cmd+Shift+V and migrated the former default while
+  retaining custom shortcuts. The shortcut opens a keyboard-focused preview inside the notch:
+  left/right browse a selected text/image, Return restores it, and Escape closes. Keyboard mode
+  stays open independently of pointer hover and dismisses on focus loss. Browsing preserves
+  selection by entry id when new copies arrive, falling back to the newest if an entry is evicted.
+- Keyboard preview validation: local Swift build, all six tests, and the 10-second launch smoke
+  test pass. Physical keyboard interaction and focus return remain unverified; a manual
+  checklist was added to `development.md`.
+
 - Merged main’s file shelf into the clipboard branch, retaining both features in the notch
   and extending the panel to fit both. The combined build, all six tests, formatting, and
   the 10-second app launch smoke test pass. Interactive shelf and clipboard layout remains

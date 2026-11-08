@@ -91,3 +91,14 @@ destination and original according to Finder's chosen copy/move operation. Repea
 held for a copy. Cancel a drag with Escape and confirm its entry remains. Use × and confirm
 the original still exists. Try duplicate drops, enough entries to scroll, and an item renamed
 outside the app. Quit and reopen to confirm the session shelf clears.
+
+### Clipboard keyboard preview checklist
+
+Copy multiple text entries and an image. Press Cmd+Shift+V with the pointer away from the notch;
+verify the preview stays open. Browse with left/right and confirm text/image previews and the
+position counter, including both ends of the history. Press Return, then Cmd+V in the original
+app; confirm the selected content is pasted. Reopen and press Escape; the clipboard should be
+unchanged. Verify clicking another app dismisses the preview, empty history is safe, and a new
+copy or capacity eviction while browsing leaves a valid selection. Verify a custom shortcut
+still works after relaunch and Reset selects Cmd+Shift+V. These interactive checks require a
+macOS desktop session and have not been performed automatically.

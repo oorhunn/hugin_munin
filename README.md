@@ -15,8 +15,9 @@
 ## Status
 
 The macOS app shows live CPU, memory, disk, and GPU usage side by side around the notch, and
-keeps a clipboard history of text and images: hover over the notch (or press **Cmd+Shift+C**) and
-click an entry to put it back on the clipboard, then paste with **Cmd+V**. Open **Settings** from
+keeps a clipboard history of text and images: hover over the notch and click an entry, or press **Cmd+Shift+V** to open the preview.
+Use **← / →** to browse, **Return** to copy the selected entry, and **Escape** to close.
+Then paste with **Cmd+V**. Open **Settings** from
 the expanded notch to change the update interval, the metrics beside the notch, the clipboard
 history length and its shortcut, and launch at login.
 

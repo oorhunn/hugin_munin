@@ -7,9 +7,8 @@ struct HotKey: Equatable {
     var keyCode: UInt32
     var modifiers: UInt32 // Carbon mask: cmdKey, optionKey, controlKey, shiftKey
 
-    /// Cmd+Shift+C, the first letter of "clipboard". Conflicts with less than Cmd+Shift+V, which
-    /// many apps use for Paste and Match Style.
-    static let standard = HotKey(keyCode: UInt32(kVK_ANSI_C),
+    /// Opens the clipboard preview. Custom shortcuts remain editable in Settings.
+    static let standard = HotKey(keyCode: UInt32(kVK_ANSI_V),
                                  modifiers: UInt32(cmdKey | shiftKey))
 
     /// A usable shortcut needs a key and at least one of Cmd, Option, or Control, which makes it

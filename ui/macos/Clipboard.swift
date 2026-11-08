@@ -26,6 +26,27 @@ private func receiveClipboardChange(_ context: UnsafeMutableRawPointer?) {
 @MainActor @Observable
 final class ClipboardStore {
     private(set) var entries: [ClipboardItem] = []
+    var previewing = false
+    private var selectedID: UInt64?
+
+    var selectedIndex: Int { entries.firstIndex { $0.id == selectedID } ?? 0 }
+    var selectedItem: ClipboardItem? { entries.isEmpty ? nil : entries[selectedIndex] }
+
+    func beginPreview() {
+        selectedID = entries.first?.id
+        previewing = true
+    }
+
+    func movePreview(_ offset: Int) {
+        guard !entries.isEmpty else { return }
+        let index = min(max(selectedIndex + offset, 0), entries.count - 1)
+        selectedID = entries[index].id
+    }
+
+    func restoreSelected() {
+        if let item = selectedItem { restore(item.id) }
+    }
+
     @ObservationIgnored private var clipboard: OpaquePointer?
     /// Decoding an image is expensive, and ids are stable, so each image decodes once.
     @ObservationIgnored private var images: [UInt64: NSImage] = [:]

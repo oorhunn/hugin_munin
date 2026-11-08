@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.notch = notch
         notch.show()
 
-        hotKeys.onPressed = { [weak notch] in notch?.toggleExpanded() }
+        hotKeys.onPressed = { [weak notch] in notch?.openClipboardPreview() }
         settings.onShortcutChange = { [hotKeys] shortcut in hotKeys.register(shortcut) }
         hotKeys.register(settings.shortcut)
     }

@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-11-08 | Cmd+Shift+V opens a focused clipboard preview in the notch; left/right browse, Return restores, Escape dismisses. This replaces the former Cmd+Shift+C default; custom shortcuts are retained. | Requested before merging the clipboard feature. A key-capable nonactivating panel receives arrows without global keyboard monitoring or Accessibility access. |
 | 2026-11-05 | C++23 is the main language. | Set by the project owner. |
 | 2026-11-05 | macOS is the first target and Ubuntu follows. | Set by the project owner. Platform code stays isolated so that Ubuntu can be added later. |
 | 2026-11-05 | The only UI surfaces are the notch UI and the settings menu UI. | Set by the project owner. |

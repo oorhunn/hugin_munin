@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Observation
 import ServiceManagement
 import SwiftUI
@@ -100,7 +101,9 @@ final class Settings {
         } else {
             let saved = HotKey(keyCode: UInt32(defaults.integer(forKey: "shortcutKeyCode")),
                                modifiers: UInt32(defaults.integer(forKey: "shortcutModifiers")))
-            shortcut = saved.isValid ? saved : .standard
+            // Migrate the former default while preserving custom combinations.
+            let oldDefault = HotKey(keyCode: UInt32(kVK_ANSI_C), modifiers: UInt32(cmdKey | shiftKey))
+            shortcut = saved.isValid && saved != oldDefault ? saved : .standard
         }
     }
 }
