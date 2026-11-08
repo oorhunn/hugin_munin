@@ -42,6 +42,7 @@ add_executable(HuginMunin MACOSX_BUNDLE
   ui/macos/main.swift
   ui/macos/Monitor.swift
   ui/macos/Clipboard.swift
+  ui/macos/ClipboardBezel.swift
   ui/macos/HotKey.swift
   ui/macos/FileShelf.swift
   ui/macos/Notch.swift

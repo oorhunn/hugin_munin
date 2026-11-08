@@ -5,16 +5,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let monitor = Monitor()
     private let settings = Settings()
     private let clipboard = ClipboardStore()
-    private lazy var settingsWindow = SettingsWindowController(settings: settings)
+    private lazy var settingsWindow = SettingsWindowController(settings: settings,
+                                                                clipboard: clipboard)
     private lazy var hotKeys = HotKeyCenter()
     private var notch: NotchController?
+    private var bezel: ClipboardBezelController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         monitor.start(interval: settings.interval)
         settings.onIntervalChange = { [monitor] in monitor.setInterval($0) }
-        clipboard.start(capacity: settings.clipboardCapacity)
+        clipboard.start(capacity: settings.clipboardCapacity,
+                        historyFile: settings.clipboardHistoryFile)
         settings.onClipboardCapacityChange = { [clipboard] in clipboard.setCapacity($0) }
-        let notch = NotchController(monitor: monitor, settings: settings, clipboard: clipboard) {
+        settings.onKeepClipboardHistoryChange = { [clipboard, settings] in
+            clipboard.setHistoryFile(settings.clipboardHistoryFile)
+        }
+        let notch = NotchController(monitor: monitor, settings: settings) {
             [weak self] in
             self?.settingsWindow.show()
         }
@@ -22,7 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.notch = notch
         notch.show()
 
-        hotKeys.onPressed = { [weak notch] in notch?.openClipboardPreview() }
+        let bezel = ClipboardBezelController(store: clipboard, settings: settings)
+        self.bezel = bezel
+        hotKeys.onPressed = { [weak bezel] in bezel?.open() }
         settings.onShortcutChange = { [hotKeys] shortcut in hotKeys.register(shortcut) }
         hotKeys.register(settings.shortcut)
     }

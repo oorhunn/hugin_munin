@@ -4,6 +4,43 @@ What has been accomplished, newest first.
 
 ## 2026-11-08
 
+- Moved the clipboard preview out of the notch into a window in the middle of the screen, at
+  Flycut's size, with scroll and double click as in Flycut. The notch now has no clipboard content
+  and returned to its 238-point panel. Clipboard controls moved to a Clipboard section in Settings,
+  with new Keep history after quitting and Clear History controls.
+- The clipboard history now survives restarts, text and images, in an owner-only unencrypted file.
+  The core loads it at start and saves after each change. Clear and turning saving off delete it.
+- CI's clang-tidy flagged an empty `catch` in the bridge and an ignored save result. The bridge
+  call now reports failure, and the save result is kept with a note on why it is not retried.
+- The build, all six test programs, clang-format, the 10-second launch smoke test, and
+  `clipboard_test` under ThreadSanitizer pass, and the running app wrote its history file with
+  owner-only permissions. clang-tidy was not run because it is not installed locally. The
+  preview window, the Settings layout, keyboard handling, focus, and paste have not been exercised
+  on a real desktop; the checklist is in `development.md`. Hosted Swift 6.3.3 is unverified until
+  CI runs.
+
+- Made the clipboard behave like Flycut with its default settings, checked against Flycut's
+  published source.
+  - Tapping the shortcut key while holding the modifiers now walks to older entries. It did
+    nothing before.
+  - The core owns a stack position that persists between previews and resets on a new copy.
+    Pasting no longer moves an entry to the front, and a repeat of an older entry is a new entry.
+  - The preview is now a keyboard-only card at Flycut's 500 by 320 size with the entry and "N of
+    M", replacing the full panel with metrics and buttons. Text previews grew to 4095 bytes.
+  - Added Flycut's keys: arrows, J and K, Home, End, Page Up, Page Down, number keys, Delete,
+    Return to paste, and keypad Enter to copy. Number keys match by key code, so they also work
+    with Shift held, which Flycut's do not.
+  - Clicking a history row now pastes. Paste uses Flycut's 0.2 s delay and HID event route.
+  - Fixed focus staying on the notch after the preview closed. The old code called `resignKey`
+    directly, which does not give up key status. An invisible key panel now takes the keyboard.
+  - Copies marked with Flycut's default private pasteboard types are no longer recorded.
+  - Not ported: favorites, save to file, search, the source app label, scroll and double click on
+    the preview, and history kept across restarts.
+  - Build, all six test programs, clang-format, and the 10-second launch smoke test pass.
+    clang-tidy is not installed locally, so it was not run. Keyboard, focus, and paste behavior
+    have not been exercised on a real desktop; the checklist is in `development.md`.
+  - macOS denied reading the owner's Flycut preferences, so only Flycut's defaults are matched.
+
 - Merged main’s clang-tidy CI setup into the clipboard branch, retaining both documentation
   changes. Made the formatter language-neutral so Objective-C++ remains supported, and
   fixed clipboard findings under the new lint checks (unsigned byte masks, size arithmetic,

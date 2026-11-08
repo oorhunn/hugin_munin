@@ -6,7 +6,7 @@ import SwiftUI
 struct NotchGeometry: Equatable {
     static let metricWidth: CGFloat = 62
     static let wingPadding: CGFloat = 14
-    static let expandedSize = CGSize(width: 640, height: 446)
+    static let expandedSize = CGSize(width: 640, height: 238)
 
     let screenFrame: NSRect
     let notchWidth: CGFloat // 0 on screens without a notch
@@ -58,27 +58,6 @@ final class NotchState {
     init(geometry: NotchGeometry) { self.geometry = geometry }
 }
 
-/// Accepts keyboard input only while the clipboard preview explicitly requests focus.
-@MainActor
-private final class ClipboardPanel: NSPanel {
-    var onKey: ((UInt16) -> Bool)?
-    var onDismiss: (() -> Void)?
-    var onModifiersReleased: (() -> Void)?
-    override var canBecomeKey: Bool { true }
-    override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, onKey?(event.keyCode) == true { return }
-        if event.type == .flagsChanged,
-           event.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty {
-            onModifiersReleased?()
-        }
-        super.sendEvent(event)
-    }
-    override func resignKey() {
-        super.resignKey()
-        onDismiss?()
-    }
-}
-
 /// Borderless panel that floats over the menu bar around the notch and expands on hover.
 ///
 /// Hover is detected with tracking areas rather than a system-wide mouse-move monitor, so the
@@ -90,18 +69,13 @@ final class NotchController {
     private let trigger: NSPanel
     private let state: NotchState
     private let settings: Settings
-    private let clipboard: ClipboardStore
-    private let pasteDelivery = ClipboardPasteDelivery()
     private let triggerTracker = HoverTracker()
     private let panelTracker = HoverTracker()
     private var screenObserver: NSObjectProtocol?
     private var collapseWork: DispatchWorkItem?
-    private var releaseTimer: Timer?
 
-    init(monitor: Monitor, settings: Settings, clipboard: ClipboardStore,
-         openSettings: @escaping () -> Void) {
+    init(monitor: Monitor, settings: Settings, openSettings: @escaping () -> Void) {
         self.settings = settings
-        self.clipboard = clipboard
         state = NotchState(geometry: NotchGeometry(screen: Self.preferredScreen()))
         panel = Self.makePanel(level: Int(CGWindowLevelForKey(.mainMenuWindow)) + 3)
         panel.ignoresMouseEvents = true
@@ -114,13 +88,8 @@ final class NotchController {
         catcher.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
         trigger.contentView = catcher
 
-        // All stored properties are set, so the collapse closure may capture self.
         let hosting = ShelfDropHosting(rootView: AnyView(NotchView(monitor: monitor, settings: settings,
-                                                        clipboard: clipboard, state: state,
-                                                        openSettings: openSettings,
-                                                        collapse: { [weak self] in
-                                                            self?.setExpanded(false)
-                                                        })))
+                                                        state: state, openSettings: openSettings)))
         hosting.sizingOptions = []
         panel.contentView = hosting
         for receiver in [hosting, catcher] {
@@ -140,7 +109,7 @@ final class NotchController {
     }
 
     private static func makePanel(level: Int) -> NSPanel {
-        let panel = ClipboardPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
+        let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -178,11 +147,11 @@ final class NotchController {
     }
 
     private func scheduleCollapse() {
-        guard state.expanded, !clipboard.previewing, !state.dragging, collapseWork == nil else { return }
+        guard state.expanded, !state.dragging, collapseWork == nil else { return }
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.collapseWork = nil
-            if !self.state.dragging && !self.clipboard.previewing { self.setExpanded(false) }
+            if !self.state.dragging { self.setExpanded(false) }
         }
         collapseWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
@@ -195,12 +164,6 @@ final class NotchController {
 
     private func setExpanded(_ expanded: Bool) {
         cancelCollapse()
-        if !expanded {
-            releaseTimer?.invalidate()
-            releaseTimer = nil
-            clipboard.previewing = false
-            if panel.isKeyWindow { panel.resignKey() }
-        }
         guard state.expanded != expanded else { return }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { state.expanded = expanded }
         panel.ignoresMouseEvents = !expanded
@@ -212,46 +175,6 @@ final class NotchController {
         }
     }
 
-    /// Keyboard mode stays open independently of pointer hover until dismissed or restored.
-    func openClipboardPreview() {
-        guard !clipboard.previewing else { return }
-        pasteDelivery.rememberDestination()
-        clipboard.beginPreview()
-        setExpanded(true)
-        guard let keyboardPanel = panel as? ClipboardPanel else { return }
-        keyboardPanel.onKey = { [weak self] code in
-            guard let self, self.clipboard.previewing else { return false }
-            switch code {
-            case 123: self.clipboard.movePreview(-1)
-            case 124: self.clipboard.movePreview(1)
-            case 36, 76:
-                self.clipboard.restoreSelected()
-                self.setExpanded(false)
-            case 53: self.setExpanded(false)
-            default: return false
-            }
-            return true
-        }
-        keyboardPanel.onModifiersReleased = { [weak self] in
-            guard let self, self.clipboard.previewing else { return }
-            let restored = self.clipboard.restoreSelected()
-            self.setExpanded(false)
-            if restored { self.pasteDelivery.paste() }
-        }
-        keyboardPanel.onDismiss = { [weak self] in
-            guard let self, self.clipboard.previewing else { return }
-            self.setExpanded(false)
-        }
-        keyboardPanel.makeKeyAndOrderFront(nil)
-        // Also catches a fast release that happened before the panel became key.
-        releaseTimer = Timer.scheduledTimer(withTimeInterval: 0.04, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, self.clipboard.previewing,
-                      NSEvent.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty else { return }
-                (self.panel as? ClipboardPanel)?.onModifiersReleased?()
-            }
-        }
-    }
 }
 
 /// Owns one tracking area that reports the pointer entering and leaving a view.
@@ -285,10 +208,8 @@ private final class HoverTracker: NSResponder {
 struct NotchView: View {
     let monitor: Monitor
     let settings: Settings
-    let clipboard: ClipboardStore
     let state: NotchState
     let openSettings: () -> Void
-    let collapse: () -> Void
 
     var body: some View {
         let geometry = state.geometry
@@ -300,14 +221,13 @@ struct NotchView: View {
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
                 UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius)
-                    .fill(.black.opacity(clipboard.previewing ? 0.70 : 1))
+                    .fill(.black)
                 VStack(spacing: 0) {
                     wings.frame(height: geometry.height)
                     if state.expanded {
                         VStack(spacing: 10) {
-                            NotchPanel(system: monitor.state, clipboard: clipboard,
-                                       openSettings: openSettings, collapse: collapse)
-                            if !clipboard.previewing { FileShelfView(state: state) }
+                            NotchPanel(system: monitor.state, openSettings: openSettings)
+                            FileShelfView(state: state)
                         }
                             .padding(.horizontal, 20)
                             .padding(.bottom, 12)
@@ -362,12 +282,10 @@ private struct WingLabel: View {
     }
 }
 
-/// Compact readout shown when the notch is expanded, with the clipboard history below it.
+/// Compact readout shown when the notch is expanded.
 private struct NotchPanel: View {
     let system: SystemState
-    let clipboard: ClipboardStore
     let openSettings: () -> Void
-    let collapse: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -389,135 +307,8 @@ private struct NotchPanel: View {
             }
             .buttonStyle(.borderless)
             .font(.caption)
-            Divider().overlay(.white.opacity(0.15))
-            if clipboard.previewing {
-                ClipboardPreview(store: clipboard, collapse: collapse)
-            } else {
-                ClipboardList(store: clipboard, collapse: collapse)
-            }
         }
         .padding(.top, 8)
-    }
-}
-
-/// A single selected item with an enlarged image or multiline text preview.
-private struct ClipboardPreview: View {
-    let store: ClipboardStore
-    let collapse: () -> Void
-
-    var body: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Button { store.movePreview(-1) } label: { Image(systemName: "chevron.left") }
-                    .disabled(store.entries.isEmpty || store.selectedIndex == 0)
-                Spacer()
-                Text(store.entries.isEmpty ? "Clipboard is empty" : "\(store.selectedIndex + 1) of \(store.entries.count)")
-                Spacer()
-                Button { store.movePreview(1) } label: { Image(systemName: "chevron.right") }
-                    .disabled(store.entries.isEmpty || store.selectedIndex == store.entries.count - 1)
-            }
-            if let item = store.selectedItem {
-                if let image = item.image {
-                    Image(nsImage: image).resizable().scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollView {
-                        Text(item.preview).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                Button("Copy selected · Return") {
-                    store.restoreSelected()
-                    collapse()
-                }
-            } else {
-                Text("Copy text or an image to get started.")
-                    .foregroundStyle(.secondary)
-            }
-            Text(ClipboardPasteDelivery.isAllowed
-                 ? "Hold shortcut modifiers · ← → Browse · Release to paste · Esc Cancel"
-                 : "Release to copy · Enable Accessibility in Settings for automatic paste")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-        .buttonStyle(.borderless)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-/// The clipboard history: click an entry to put it back on the clipboard, then paste with Cmd+V.
-private struct ClipboardList: View {
-    let store: ClipboardStore
-    let collapse: () -> Void
-
-    var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Text("Clipboard")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Clear") { store.clear() }
-                    .disabled(store.entries.isEmpty)
-            }
-            .buttonStyle(.borderless)
-            .font(.caption)
-            if store.entries.isEmpty {
-                Text("Nothing copied yet")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 60)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(store.entries) { entry in
-                            ClipboardRow(entry: entry) {
-                                store.restore(entry.id)
-                                collapse()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct ClipboardRow: View {
-    let entry: ClipboardItem
-    let restore: () -> Void
-
-    var body: some View {
-        Button(action: restore) {
-            HStack(spacing: 8) {
-                if let image = entry.image {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 20, height: 20)
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
-                } else {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                Text(entry.preview.isEmpty ? "Image" : entry.preview)
-                    .font(.system(size: 12))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 8)
-                if entry.isImage {
-                    Text(Format.bytes(UInt64(entry.size)))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Text(entry.capturedAt, format: .relative(presentation: .named))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }
 
