@@ -4,6 +4,9 @@ What has been accomplished, newest first.
 
 ## 2026-11-06
 
+- Merged `main` into the GPU and CI branch. The first CI run of the branch failed in both builds
+  with the Swift 6.3.3 compiler crash described below, because the branch predated the fix to the
+  login toggle in `ced4a04`. The merge brings that fix in, and it needed no other Swift change.
 - Added `clang-tidy` to the project and to CI.
   - `.clang-tidy` covers bug-finding and modernization checks, `tests/.clang-tidy` turns off three
     checks that do not fit test code, and style-only checks stay off.
@@ -13,6 +16,19 @@ What has been accomplished, newest first.
   - Fixed the 9 warnings in the committed code, with no change in behavior: an `explicit`
     constructor, `std::scoped_lock`, a `stop_token` passed by reference, an explicit `void *` cast,
     and clearer declarations.
+- Investigated a Swift 6.3.3 CI compiler crash generating an isolated Boolean callback wrapper.
+  Shelf callback annotations and then direct notch state access did not resolve it. Located a
+  remaining bound-method conversion in the Launch at login binding and replaced it with an
+  explicit closure. Local Swift 6.4 build, tests, and smoke test pass. All five CI checks passed
+  on commit `ced4a04`, including Debug and Release builds on Swift 6.3.3.
+
+- Added a temporary file/folder shelf to the expanded notch, with drops onto the collapsed trigger
+  opening the panel. Shelf entries show file icons, support dragging to external destinations,
+  and have a remove button that leaves originals intact.
+- Added C++ shelf membership and a C bridge, including normalization and duplicate rejection.
+- Built the app, passed all five test programs, and passed the 10-second launch smoke test.
+- Real Finder drag/drop, copy/move, cancellation, scrolling, and physical notch interactions
+  remain unverified; the manual checklist is in `development.md`.
 
 ## 2026-11-05
 

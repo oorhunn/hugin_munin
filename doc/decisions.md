@@ -31,6 +31,8 @@
 | 2026-11-05 | `doc/` is split into a guide per topic, with `doc/README.md` as the index. | `progress.md` and `decisions.md` record history, and the new pages describe how things work now. Proposed during the docs setup. |
 | 2026-11-06 | `.clang-tidy` enables the bug-finding and modernization check groups, turns off style-only checks, and fails CI on any warning. | Style checks gave most of the 812 findings in a first run. With only the useful checks left, a warning should stop a merge. Proposed during the setup, and the owner asked for it to run in CI. |
 
+| 2026-11-06 | The notch file shelf holds session-only path references, with AppKit file drags and C++ membership logic. | Originals stay in place until the destination handles a move/copy. Successful exports clear entries; cancelled drags retain them. No extra UI surface or storage copy is needed. |
+
 ## Open questions
 
 - **Should releases be signed with a Developer ID and notarized?** macOS blocks the app after

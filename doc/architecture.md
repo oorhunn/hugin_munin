@@ -21,7 +21,7 @@ core/src/platform/<os>/collectors.cpp one backend per OS
 | `hm_core` | Metrics, sampler, and the backend for the current OS |
 | `hm_bridge` | The C interface over `hm_core` |
 | `HuginMunin` | The macOS app bundle, built to `build/HuginMunin.app` |
-| `hm_tests` | Builds the four test programs without building the app |
+| `hm_tests` | Builds the five test programs without building the app |
 
 ## How a sample reaches the screen
 
@@ -47,3 +47,18 @@ sampling logic needs no real system to test.
 
 To add Ubuntu, implement `collectors.hpp` under `core/src/platform/linux/` and select it in
 `CMakeLists.txt`. No macOS type may appear outside `core/src/platform/macos/` and `ui/macos/`.
+
+## File shelf
+
+`hm::FileShelf` in `core/include/hm/file_shelf.hpp` keeps an ordered, deduplicated list of
+absolute paths for the current session, exposed through the C bridge. It never performs
+filesystem operations. Shelf mutations happen on the UI thread.
+
+`FileShelf.swift` adapts macOS file pasteboards to the core and renders the shelf inside the
+expanded notch. AppKit drop receivers on both the collapsed trigger and expanded panel accept
+file URLs, including folders. Dragging over the collapsed trigger opens the panel. The drag
+source offers copy and move to other applications; the destination chooses the operation using
+normal macOS rules. A completed copy or move removes the reference, while cancellation retains it.
+The panel stays expanded during an outgoing drag. Entries can also be removed without deleting
+anything. Paths are not persisted or tracked after an external rename/move; an unavailable item
+cannot be dragged and can be dismissed with its × button.
