@@ -161,4 +161,18 @@ Collected<Disk> collect_disk() {
     return *disk;
 }
 
+Collected<MemoryPressure> collect_memory_pressure() {
+    int level = 0;
+    size_t size = sizeof(level);
+    if (sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nullptr, 0) != 0)
+        return std::unexpected("Memory pressure unavailable");
+    if (level == 1)
+        return MemoryPressure::normal;
+    if (level == 2)
+        return MemoryPressure::warning;
+    if (level == 4)
+        return MemoryPressure::critical;
+    return std::unexpected("Unknown memory pressure level");
+}
+
 } // namespace hm

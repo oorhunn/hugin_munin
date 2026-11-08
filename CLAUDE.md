@@ -70,3 +70,17 @@ and the format command, and `doc/ci-cd.md` for releases.
 
 - Before choosing something listed under "Open questions" in `doc/decisions.md`, confirm it with
   the user.
+
+## Agent resource coordination
+
+When the Hugin & Munin MCP server is configured, register with a name and project before heavy
+local work. Request a lease with CPU core equivalents, peak RAM bytes, a unique request key,
+a job title, and your application's duration estimate when available. A capacity read alone
+is not a reservation. Wait for `running`, then match build/test concurrency to the grant.
+
+Keep leases alive every 30 seconds through the client integration during blocking commands.
+Update remaining estimates when they change, obey pressure/yield instructions at safe boundaries,
+and release only after work and descendants stop. Unregister when finished. Nested agents must
+subdivide a parent grant or request additional capacity; never spend the same budget twice.
+Do not invent an estimate when unknown. Do not bypass an unavailable service by assuming unlimited
+capacity. See `doc/resource-coordination.md` for the MCP configuration and `hm-run` utility.
