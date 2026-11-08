@@ -5,6 +5,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -76,27 +78,25 @@ void history_rules() {
             "The newest entry is first");
 
     require(!history.capture(text("beta"), now), "A duplicate of the newest entry is ignored");
-    require(history.capture(text("alpha"), now) == a, "A duplicate of an older entry reuses it");
-    require(history.entries().size() == 2 && history.entries().front().id == *a,
-            "A duplicate of an older entry moves it to the front");
+    const auto repeated = history.capture(text("alpha"), now);
+    require(repeated && *repeated != *a && history.entries().size() == 3,
+            "A duplicate of an older entry is a new entry");
+    require(history.remove(*repeated), "Remove finds an entry");
+    require(!history.remove(*repeated), "Remove rejects an unknown id");
+    require(history.entries().size() == 2 && history.entries().front().id == *b,
+            "Remove leaves the other entries in order");
 
     const auto c = history.capture(text("gamma"), now);
     require(c && history.entries().size() == 3, "Capacity 3 holds three entries");
     const auto d = history.capture(text("delta"), now);
     require(d && history.entries().size() == 3, "Capacity 3 still holds three entries");
-    require(history.entries().back().content.text == "alpha", "The oldest entry is evicted first");
-    require(!history.content(*b), "An evicted entry is gone");
+    require(history.entries().back().content.text == "beta", "The oldest entry is evicted first");
+    require(!history.content(*a), "An evicted entry is gone");
 
     require(!history.capture(text(""), now), "Empty content is not recorded");
     require(!history.capture(image(std::vector<std::uint8_t>(2000, 7)), now),
             "Content over the byte budget is not recorded");
     require(history.entries().size() == 3, "A rejected capture changes nothing");
-
-    require(history.promote(history.entries().back().id, now), "Promote finds an older entry");
-    const auto promoted = history.entries().front().id;
-    require(history.entries().size() == 3, "Promote keeps every entry");
-    require(history.promote(promoted, now), "Promote accepts the front entry");
-    require(!history.promote(9999, now), "Promote rejects an unknown id");
 
     history.set_capacity(2);
     require(history.entries().size() == 2 && history.total_bytes() <= 1000,
@@ -196,6 +196,148 @@ void tracker_rules() {
     require(!tracker.poll(), "A count marked seen is not read");
 }
 
+void stack_steps() {
+    using enum hm::ClipboardStep;
+    require(hm::clipboard_stack_step(0, 0, older) == 0, "An empty history stays at 0");
+    require(hm::clipboard_stack_step(0, 3, older) == 1, "Older moves away from the newest");
+    require(hm::clipboard_stack_step(2, 3, older) == 2, "Older stops at the oldest entry");
+    require(hm::clipboard_stack_step(1, 3, newer) == 0, "Newer moves toward the newest");
+    require(hm::clipboard_stack_step(0, 3, newer) == 0, "Newer stops at the newest entry");
+    require(hm::clipboard_stack_step(1, 30, oldest) == 29, "Oldest goes to the last entry");
+    require(hm::clipboard_stack_step(9, 30, newest) == 0, "Newest goes to the first entry");
+    require(hm::clipboard_stack_step(5, 30, ten_older) == 15, "A page moves ten entries");
+    require(hm::clipboard_stack_step(25, 30, ten_older) == 29, "A page stops at the oldest");
+    require(hm::clipboard_stack_step(15, 30, ten_newer) == 5, "A page moves back ten entries");
+    require(hm::clipboard_stack_step(5, 30, ten_newer) == 0, "A page stops at the newest");
+}
+
+void wait_for_changes(const std::atomic<int> &changes, int target) {
+    for (int i = 0; i < 600 && changes < target; ++i)
+        std::this_thread::sleep_for(5ms);
+    require(changes.load() == target, "The watcher saw the expected copies");
+}
+
+void watcher_stack() {
+    FakePasteboard pasteboard;
+    pasteboard.copy(1, text("one"));
+    std::atomic<int> changes = 0;
+    hm::ClipboardWatcher watcher([&changes] { ++changes; }, 10, pasteboard.sources(), 5ms);
+    wait_for_changes(changes, 1);
+    pasteboard.copy(2, text("two"));
+    wait_for_changes(changes, 2);
+    pasteboard.copy(3, text("three"));
+    wait_for_changes(changes, 3);
+
+    using enum hm::ClipboardStep;
+    require(watcher.stack_position() == 0, "The stack starts at the newest entry");
+    require(watcher.stack_move(older) == 1, "The stack moves to an older entry");
+    require(watcher.stack_restore(), "The entry at the stack position restores");
+    require(pasteboard.written().back().text == "two", "The stack position picks the entry");
+    require(watcher.stack_position() == 1, "Pasting keeps the stack position");
+    require(watcher.snapshot().front().content.text == "three", "Pasting keeps the order");
+
+    require(watcher.stack_jump(2) == 2, "A jump goes to an existing position");
+    require(watcher.stack_jump(9) == 2, "A jump past the end stays put");
+    watcher.stack_remove();
+    require(watcher.snapshot().size() == 2 && watcher.stack_position() == 1,
+            "Removing the last entry keeps the position valid");
+
+    pasteboard.copy(10, text("four"));
+    wait_for_changes(changes, 4);
+    require(watcher.stack_position() == 0, "A new copy returns to the newest entry");
+
+    watcher.stack_move(oldest);
+    watcher.set_capacity(1);
+    require(watcher.stack_position() == 0, "A smaller capacity keeps the position valid");
+    watcher.clear();
+    require(!watcher.stack_restore(), "An empty history has nothing to restore");
+    watcher.stack_remove();
+    require(watcher.stack_position() == 0, "Removing from an empty history is safe");
+}
+
+void history_file() {
+    namespace fs = std::filesystem;
+    const auto folder =
+        fs::temp_directory_path() /
+        ("hm-clipboard-test-" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto file = folder / "nested" / "history.bin";
+    const auto now = std::chrono::system_clock::now();
+
+    require(!hm::load_clipboard_history(file), "A missing file is an error");
+    const std::vector<hm::ClipboardEntry> entries{
+        {.id = 8, .content = text("new"), .captured_at = now},
+        {.id = 3, .content = image({1, 0, 3}), .captured_at = now}};
+    require(hm::save_clipboard_history(file, entries).has_value(), "The history saves");
+    require((fs::status(file).permissions() & fs::perms::all) ==
+                (fs::perms::owner_read | fs::perms::owner_write),
+            "Only the owner can read the file");
+    const auto loaded = hm::load_clipboard_history(file);
+    require(loaded && loaded->size() == 2 && loaded->front().content == text("new") &&
+                loaded->back().content == image({1, 0, 3}),
+            "The history loads in order, with binary content intact");
+    require(std::chrono::floor<std::chrono::milliseconds>(loaded->front().captured_at) ==
+                std::chrono::floor<std::chrono::milliseconds>(now),
+            "The capture time survives");
+
+    const auto size = fs::file_size(file);
+    fs::resize_file(file, size - 1);
+    require(!hm::load_clipboard_history(file), "A cut-off file is an error");
+    std::ofstream(file, std::ios::binary | std::ios::trunc) << "not a history";
+    require(!hm::load_clipboard_history(file), "A foreign file is an error");
+    fs::remove(file);
+
+    FakePasteboard pasteboard;
+    pasteboard.copy(1, text("one"));
+    std::atomic<int> changes = 0;
+    {
+        hm::ClipboardWatcher watcher([&changes] { ++changes; }, 10, pasteboard.sources(), 5ms,
+                                     file);
+        wait_for_changes(changes, 1);
+        pasteboard.copy(2, text("two"));
+        wait_for_changes(changes, 2);
+    }
+    require(fs::exists(file), "The watcher saves its history");
+
+    {
+        changes = 0;
+        hm::ClipboardWatcher reopened([&changes] { ++changes; }, 10, pasteboard.sources(), 5ms,
+                                      file);
+        const auto snapshot = reopened.snapshot();
+        require(snapshot.size() == 2 && snapshot.front().content.text == "two" &&
+                    snapshot.back().content.text == "one",
+                "A restart brings the history back in order");
+        for (int i = 0; i < 40; ++i)
+            std::this_thread::sleep_for(5ms);
+        require(reopened.snapshot().size() == 2,
+                "The pasteboard at launch is not recorded again when it is already newest");
+        reopened.clear();
+        require(!fs::exists(file), "Clear deletes the file at once");
+    }
+
+    {
+        hm::ClipboardWatcher memory_only(nullptr, 10, pasteboard.sources(), 5ms);
+        pasteboard.copy(3, text("three"));
+        for (int i = 0; i < 600 && memory_only.snapshot().empty(); ++i)
+            std::this_thread::sleep_for(5ms);
+        memory_only.set_history_file(file);
+        for (int i = 0; i < 600 && !fs::exists(file); ++i)
+            std::this_thread::sleep_for(5ms);
+        require(fs::exists(file), "Turning saving on writes the current history");
+        memory_only.set_history_file({});
+        require(!fs::exists(file), "Turning saving off deletes the file");
+    }
+    require(!fs::exists(file), "A watcher that stopped saving leaves no file behind");
+
+    hm::ClipboardHistory small(1);
+    small.adopt({{.id = 1, .content = text("newest"), .captured_at = now},
+                 {.id = 2, .content = text("oldest"), .captured_at = now}});
+    require(small.entries().size() == 1 && small.entries().front().content.text == "newest",
+            "A saved history respects a smaller capacity");
+
+    fs::remove_all(folder);
+}
+
 void watcher_thread() {
     FakePasteboard pasteboard;
     pasteboard.copy(1, text("one"));
@@ -221,7 +363,7 @@ void watcher_thread() {
     const auto writes = pasteboard.written();
     require(writes.size() == 1 && writes.front().text == "one",
             "Restore writes the entry to the pasteboard");
-    require(watcher.snapshot().front().id == one_id, "Restore moves the entry to the front");
+    require(watcher.snapshot().back().id == one_id, "Restore leaves the history order alone");
     for (int i = 0; i < 100; ++i)
         std::this_thread::sleep_for(5ms);
     require(changes.load() == 2,
@@ -241,6 +383,9 @@ int main() {
     byte_budget();
     image_rules();
     tracker_rules();
+    stack_steps();
+    watcher_stack();
+    history_file();
     watcher_thread();
     return 0;
 }

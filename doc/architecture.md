@@ -60,14 +60,25 @@ To add Ubuntu, implement both headers under `core/src/platform/linux/` and selec
 2. When the counter moves, `hm::ClipboardTracker` reads the pasteboard. An empty read is retried
    once on the next poll, because a poll can land inside another process's write, between the
    clear and the new contents.
-3. `hm::ClipboardHistory` records the content: a duplicate reuses its entry and moves it to the
-   front, and the entry count and total payload bytes both stay within their limits, evicting the
-   oldest.
-4. The bridge turns the history into a malloc'd `hm_clipboard_entry` array with a 255-byte text
+3. `hm::ClipboardHistory` records the content, ignoring a repeat of the newest entry. The entry
+   count and total payload bytes both stay within their limits, evicting the oldest. Content that
+   password managers mark as private never gets this far, because `read_pasteboard` rejects it.
+4. The bridge turns the history into a malloc'd `hm_clipboard_entry` array with a 4095-byte text
    preview, which `ClipboardStore.swift` copies into Swift values on the main actor.
-5. Clicking an entry calls `hm_clipboard_restore`, which writes the content back to the
-   pasteboard; the user pastes it with Cmd+V. The notch also opens without the pointer, through
-   the global shortcut registered in `HotKey.swift` with Carbon's `RegisterEventHotKey`.
+5. The global shortcut, registered in `HotKey.swift` with Carbon's `RegisterEventHotKey`, opens
+   the preview in `ClipboardBezel.swift`, a nonactivating panel centered on the screen. Ordering
+   it out returns focus to the app the user was working in.
+6. `hm::ClipboardWatcher` owns the stack position, which persists between previews and returns to
+   the newest entry on an external copy. Choosing an entry writes it back to the pasteboard
+   without reordering the history, and `ClipboardPasteDelivery` then sends Cmd+V.
+
+The history is saved when Settings allow it. The Swift UI chooses the path, which is
+`~/Library/Application Support/HuginMunin/clipboard-history.bin`, and the core does the rest: it
+loads the file before the watcher starts and saves on the watcher thread after each change,
+writing a temporary owner-only file and renaming it over the old one. A damaged file is ignored.
+`clear` and turning saving off delete the file straight away, and `save_mutex_` stops a save in
+progress from bringing it back.
+
 ## File shelf
 
 `hm::FileShelf` in `core/include/hm/file_shelf.hpp` keeps an ordered, deduplicated list of

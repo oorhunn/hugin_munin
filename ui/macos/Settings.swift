@@ -48,6 +48,7 @@ final class Settings {
     @ObservationIgnored var onWingMetricsChange: (() -> Void)?
     @ObservationIgnored var onClipboardCapacityChange: ((Int) -> Void)?
     @ObservationIgnored var onShortcutChange: ((HotKey) -> Void)?
+    @ObservationIgnored var onKeepClipboardHistoryChange: (() -> Void)?
 
     var interval: Double {
         didSet {
@@ -70,6 +71,21 @@ final class Settings {
             UserDefaults.standard.set(clipboardCapacity, forKey: "clipboardCapacity")
             onClipboardCapacityChange?(clipboardCapacity)
         }
+    }
+
+    /// Whether the clipboard history survives quitting the app.
+    var keepClipboardHistory: Bool {
+        didSet {
+            UserDefaults.standard.set(keepClipboardHistory, forKey: "keepClipboardHistory")
+            onKeepClipboardHistoryChange?()
+        }
+    }
+
+    /// Where the history is saved, or nil when it should stay in memory.
+    var clipboardHistoryFile: URL? {
+        guard keepClipboardHistory else { return nil }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("HuginMunin/clipboard-history.bin")
     }
 
     /// The shortcut that opens the clipboard history.
@@ -96,6 +112,7 @@ final class Settings {
             .map { Set($0.compactMap(Metric.init(rawValue:))) } ?? Set(Metric.allCases)
         let savedCapacity = defaults.integer(forKey: "clipboardCapacity")
         clipboardCapacity = Self.clipboardCapacities.contains(savedCapacity) ? savedCapacity : 50
+        keepClipboardHistory = defaults.object(forKey: "keepClipboardHistory") as? Bool ?? true
         if defaults.object(forKey: "shortcutKeyCode") == nil {
             shortcut = .standard
         } else {
@@ -136,6 +153,7 @@ final class LoginItem {
 
 struct SettingsView: View {
     @Bindable var settings: Settings
+    let clipboard: ClipboardStore
     let loginItem: LoginItem
     let shortcutRecorder: ShortcutRecorder
 
@@ -154,17 +172,6 @@ struct SettingsView: View {
                     }
                 }
             }
-            Picker("Clipboard history", selection: $settings.clipboardCapacity) {
-                ForEach(Settings.clipboardCapacities, id: \.self) { capacity in
-                    Text("\(capacity) copies").tag(capacity)
-                }
-            }
-            ShortcutPicker(settings: settings, recorder: shortcutRecorder)
-            LabeledContent("Paste on release") {
-                Button("Allow Accessibility…") { ClipboardPasteDelivery.requestPermission() }
-            }
-            Text("Automatic paste needs Accessibility permission. Without it, releasing copies the selection; paste with ⌘V.")
-                .font(.caption).foregroundStyle(.secondary)
             Toggle("Launch at login", isOn: Binding(get: { loginItem.isOn }, set: { loginItem.set($0) }))
             if loginItem.status == .requiresApproval {
                 HStack {
@@ -175,6 +182,26 @@ struct SettingsView: View {
             }
             if let error = loginItem.errorMessage {
                 Text(error).font(.caption).foregroundStyle(.red)
+            }
+            Section("Clipboard") {
+                Picker("History length", selection: $settings.clipboardCapacity) {
+                    ForEach(Settings.clipboardCapacities, id: \.self) { capacity in
+                        Text("\(capacity)").tag(capacity)
+                    }
+                }
+                ShortcutPicker(settings: settings, recorder: shortcutRecorder)
+                Toggle("Keep history after quitting", isOn: $settings.keepClipboardHistory)
+                Text("Saved on this Mac without encryption, readable only by your account.")
+                    .font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Automatic paste") {
+                    Button("Allow Accessibility…") { ClipboardPasteDelivery.requestPermission() }
+                }
+                Text("Without Accessibility permission, choosing an entry copies it; paste with ⌘V.")
+                    .font(.caption).foregroundStyle(.secondary)
+                LabeledContent("History") {
+                    Button("Clear History") { clipboard.clear() }
+                        .disabled(clipboard.entries.isEmpty)
+                }
             }
         }
         .pickerStyle(.segmented)
@@ -260,12 +287,14 @@ private struct ShortcutPicker: View {
 @MainActor
 final class SettingsWindowController {
     private let settings: Settings
+    private let clipboard: ClipboardStore
     private let loginItem = LoginItem()
     private let shortcutRecorder: ShortcutRecorder
     private var window: NSWindow?
 
-    init(settings: Settings) {
+    init(settings: Settings, clipboard: ClipboardStore) {
         self.settings = settings
+        self.clipboard = clipboard
         shortcutRecorder = ShortcutRecorder()
         shortcutRecorder.onRecord = { [weak settings] shortcut in
             settings?.shortcut = shortcut
@@ -282,7 +311,7 @@ final class SettingsWindowController {
 
     private func makeWindow() -> NSWindow {
         let window = NSWindow(contentViewController: NSHostingController(
-            rootView: SettingsView(settings: settings, loginItem: loginItem,
+            rootView: SettingsView(settings: settings, clipboard: clipboard, loginItem: loginItem,
                                    shortcutRecorder: shortcutRecorder)
         ))
         window.title = "Hugin & Munin Settings"

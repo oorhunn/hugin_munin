@@ -88,12 +88,27 @@ void hm_sampler_set_interval(hm_sampler *sampler, double interval_seconds) {
 
 void hm_sampler_stop(hm_sampler *sampler) { delete sampler; }
 
-hm_clipboard *hm_clipboard_start(hm_clipboard_callback callback, void *context, size_t capacity) {
+hm_clipboard *hm_clipboard_start(hm_clipboard_callback callback, void *context, size_t capacity,
+                                 const char *history_file) {
     try {
-        return new hm_clipboard{
-            hm::ClipboardWatcher([callback, context] { callback(context); }, capacity)};
+        return new hm_clipboard{hm::ClipboardWatcher(
+            [callback, context] { callback(context); }, capacity, {}, hm::clipboard_poll_interval,
+            history_file != nullptr ? std::filesystem::path(history_file)
+                                    : std::filesystem::path())};
     } catch (const std::exception &) {
         return nullptr;
+    }
+}
+
+void hm_clipboard_set_history_file(hm_clipboard *clipboard, const char *history_file) {
+    if (clipboard == nullptr)
+        return;
+    try {
+        clipboard->watcher.set_history_file(history_file != nullptr
+                                                ? std::filesystem::path(history_file)
+                                                : std::filesystem::path());
+    } catch (const std::exception &) {
+        // Saving stays as it was, and the history in memory is unaffected.
     }
 }
 
@@ -158,6 +173,29 @@ void hm_clipboard_free_snapshot(hm_clipboard_entry *entries, size_t count) {
 
 bool hm_clipboard_restore(hm_clipboard *clipboard, uint64_t id) {
     return clipboard != nullptr && clipboard->watcher.restore(id);
+}
+
+size_t hm_clipboard_stack_position(const hm_clipboard *clipboard) {
+    return clipboard != nullptr ? clipboard->watcher.stack_position() : 0;
+}
+
+size_t hm_clipboard_stack_move(hm_clipboard *clipboard, hm_clipboard_step step) {
+    return clipboard != nullptr
+               ? clipboard->watcher.stack_move(static_cast<hm::ClipboardStep>(step))
+               : 0;
+}
+
+size_t hm_clipboard_stack_jump(hm_clipboard *clipboard, size_t position) {
+    return clipboard != nullptr ? clipboard->watcher.stack_jump(position) : 0;
+}
+
+bool hm_clipboard_stack_restore(hm_clipboard *clipboard) {
+    return clipboard != nullptr && clipboard->watcher.stack_restore();
+}
+
+void hm_clipboard_stack_remove(hm_clipboard *clipboard) {
+    if (clipboard)
+        clipboard->watcher.stack_remove();
 }
 
 void hm_clipboard_clear(hm_clipboard *clipboard) {

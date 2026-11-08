@@ -15,13 +15,19 @@
 ## Status
 
 The macOS app shows live CPU, memory, disk, and GPU usage side by side around the notch, and
-keeps a clipboard history of text and images: hover over the notch and click an entry, or press **Cmd+Shift+V** to open the preview.
-Keep **Cmd+Shift** held and use **← / →** to browse. Release the modifiers to paste the
-selection and close the preview; **Escape** cancels. Enable Accessibility through **Settings →
-Paste on release** for automatic paste. Without permission, release copies the item for **Cmd+V**.
+keeps a clipboard history of text and images that works like Flycut. Press **Cmd+Shift+V** to
+open the preview in the middle of the screen, keep **Cmd+Shift** held, and tap **V** to walk to older entries.
+Release the modifiers to paste the selection. The arrows, **J / K**, **Home / End**,
+**Page Up / Page Down**, and **1** to **0** also move through the history, **Return** pastes,
+keypad **Enter** copies without pasting, **Delete** forgets the entry, and **Escape** cancels.
+Pasting keeps the history order, and the next preview opens where the last one ended until you
+copy something new. Scrolling over the preview also moves through the history, and a double click
+pastes. The history is saved between launches, without encryption and readable only by your
+account. Enable Accessibility through **Settings → Automatic paste**. Without permission, choosing
+an entry copies it for **Cmd+V**. Copies marked private by password managers are not recorded.
 The preview background is 70% opaque (30% transparent). Open **Settings** from
-the expanded notch to change the update interval, the metrics beside the notch, the clipboard
-history length and its shortcut, and launch at login.
+the expanded notch to change the update interval, the metrics beside the notch, and launch at
+login, and to set the clipboard's history length, shortcut, saving, automatic paste, and clearing.
 
 Drop documents or folders onto the notch to keep them on the **File shelf**. Drag a shelf item to
 Finder or another app when ready. Successful moves or copies remove the entry; cancelled drags

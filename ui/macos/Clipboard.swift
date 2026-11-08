@@ -9,7 +9,6 @@ struct ClipboardItem: Identifiable {
     let isImage: Bool
     let preview: String
     let capturedAt: Date
-    let size: Int
     let image: NSImage?
 }
 
@@ -21,32 +20,24 @@ private func receiveClipboardChange(_ context: UnsafeMutableRawPointer?) {
     Task { @MainActor in store.reload() }
 }
 
-/// Publishes the core's clipboard history on the main actor. Restoring an entry writes it back
-/// to the clipboard; the user pastes it with Cmd+V.
+/// Publishes the core's clipboard history and keyboard preview position on the main actor.
 @MainActor @Observable
 final class ClipboardStore {
     private(set) var entries: [ClipboardItem] = []
-    var previewing = false
-    private var selectedID: UInt64?
+    private(set) var position = 0
 
-    var selectedIndex: Int { entries.firstIndex { $0.id == selectedID } ?? 0 }
-    var selectedItem: ClipboardItem? { entries.isEmpty ? nil : entries[selectedIndex] }
+    var selectedItem: ClipboardItem? { entries.indices.contains(position) ? entries[position] : nil }
 
-    func beginPreview() {
-        selectedID = entries.first?.id
-        previewing = true
-    }
+    func move(_ step: hm_clipboard_step) { position = hm_clipboard_stack_move(clipboard, step) }
+    func jump(to position: Int) { self.position = hm_clipboard_stack_jump(clipboard, position) }
 
-    func movePreview(_ offset: Int) {
-        guard !entries.isEmpty else { return }
-        let index = min(max(selectedIndex + offset, 0), entries.count - 1)
-        selectedID = entries[index].id
-    }
-
+    /// Puts the selected entry on the clipboard, leaving the history order and position alone.
     @discardableResult
-    func restoreSelected() -> Bool {
-        guard let item = selectedItem else { return false }
-        return restore(item.id)
+    func restoreSelected() -> Bool { hm_clipboard_stack_restore(clipboard) }
+
+    func removeSelected() {
+        hm_clipboard_stack_remove(clipboard)
+        reload()
     }
 
     @ObservationIgnored private var clipboard: OpaquePointer?
@@ -54,24 +45,27 @@ final class ClipboardStore {
     @ObservationIgnored private var images: [UInt64: NSImage] = [:]
 
     /// The store must stay alive until `stop` returns, since the core holds it unretained.
-    func start(capacity: Int) {
+    func start(capacity: Int, historyFile: URL?) {
         guard clipboard == nil else { return }
-        clipboard = hm_clipboard_start(receiveClipboardChange,
-                                       Unmanaged.passUnretained(self).toOpaque(), capacity)
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        clipboard = withPath(historyFile) {
+            hm_clipboard_start(receiveClipboardChange, context, capacity, $0)
+        }
         reload()
+    }
+
+    /// Starts saving to `file`, or stops saving and deletes the saved history when it is nil.
+    func setHistoryFile(_ file: URL?) {
+        withPath(file) { hm_clipboard_set_history_file(clipboard, $0) }
+    }
+
+    private func withPath<Result>(_ file: URL?, _ body: (UnsafePointer<CChar>?) -> Result) -> Result {
+        file?.withUnsafeFileSystemRepresentation(body) ?? body(nil)
     }
 
     func setCapacity(_ capacity: Int) {
         hm_clipboard_set_capacity(clipboard, capacity)
         reload()
-    }
-
-    /// Puts the entry back on the clipboard and moves it to the front of the history.
-    @discardableResult
-    func restore(_ id: UInt64) -> Bool {
-        let restored = hm_clipboard_restore(clipboard, id)
-        reload()
-        return restored
     }
 
     func clear() {
@@ -87,6 +81,7 @@ final class ClipboardStore {
     /// Reads one consistent snapshot from the core and turns it into display items.
     func reload() {
         guard let clipboard else { return }
+        position = hm_clipboard_stack_position(clipboard)
         var count = 0
         guard let snapshot = hm_clipboard_snapshot(clipboard, &count), count > 0 else {
             entries = []
@@ -116,7 +111,6 @@ final class ClipboardStore {
                 isImage: entry.kind == HM_CLIPBOARD_IMAGE,
                 preview: entry.text != nil ? String(cString: entry.text) : "",
                 capturedAt: Date(timeIntervalSince1970: entry.captured_at),
-                size: entry.size,
                 image: image))
         }
         images = images.filter { live.contains($0.key) }
