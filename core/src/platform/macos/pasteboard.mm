@@ -73,10 +73,12 @@ Collected<ClipboardContent> read_pasteboard()
   // Text wins when an app offers both, which is common: it is what the user
   // most often meant to copy, and pasting it into a text field works
   // everywhere.
-  if (NSString *text = [pasteboard stringForType:NSPasteboardTypeString]) {
-    if (text.length > 0)
+  if (NSString *text = [pasteboard stringForType:NSPasteboardTypeString];
+      text.length > 0) {
+    if (const char *utf8 = text.UTF8String)
       return ClipboardContent{.kind = ClipboardContent::Kind::text,
-                              .text = std::string(text.UTF8String)};
+                              .text = std::string(utf8)};
+    return std::unexpected("The pasteboard text cannot be converted to UTF-8");
   }
   if (auto bytes = image_bytes(pasteboard); !bytes.empty())
     return ClipboardContent{.kind = ClipboardContent::Kind::image,
