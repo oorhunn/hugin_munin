@@ -43,6 +43,7 @@ add_executable(HuginMunin MACOSX_BUNDLE
   ui/macos/Monitor.swift
   ui/macos/Clipboard.swift
   ui/macos/HotKey.swift
+  ui/macos/FileShelf.swift
   ui/macos/Notch.swift
   ui/macos/Settings.swift
   ui/macos/Style.swift
@@ -63,7 +64,7 @@ add_custom_command(TARGET HuginMunin POST_BUILD
 
 include(CTest)
 if(BUILD_TESTING)
-  foreach(test metrics_test collectors_test sampler_test clipboard_test bridge_test)
+  foreach(test metrics_test collectors_test sampler_test clipboard_test bridge_test file_shelf_test)
     add_executable(${test} tests/${test}.cpp)
     target_link_libraries(${test} PRIVATE hm_bridge)
     target_compile_options(${test} PRIVATE -Wall -Wextra -Wpedantic)

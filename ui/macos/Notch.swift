@@ -6,7 +6,7 @@ import SwiftUI
 struct NotchGeometry: Equatable {
     static let metricWidth: CGFloat = 62
     static let wingPadding: CGFloat = 14
-    static let expandedSize = CGSize(width: 640, height: 320)
+    static let expandedSize = CGSize(width: 640, height: 446)
 
     let screenFrame: NSRect
     let notchWidth: CGFloat // 0 on screens without a notch
@@ -51,6 +51,8 @@ struct NotchGeometry: Equatable {
 @MainActor @Observable
 final class NotchState {
     var expanded = false
+    var dragging = false
+    let shelf = FileShelf()
     var geometry: NotchGeometry
 
     init(geometry: NotchGeometry) { self.geometry = geometry }
@@ -82,20 +84,28 @@ final class NotchController {
         // Sits just under the panel, which draws the notch over it. A fully transparent window
         // would let the pointer through, so it gets an invisible sliver of alpha.
         trigger = Self.makePanel(level: Int(CGWindowLevelForKey(.mainMenuWindow)) + 2)
-        let catcher = NSView()
+        let catcher = ShelfDropHosting(rootView: AnyView(Color.clear))
         catcher.wantsLayer = true
         catcher.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
         trigger.contentView = catcher
 
         // All stored properties are set, so the collapse closure may capture self.
-        let hosting = NSHostingView(rootView: NotchView(monitor: monitor, settings: settings,
+        let hosting = ShelfDropHosting(rootView: AnyView(NotchView(monitor: monitor, settings: settings,
                                                         clipboard: clipboard, state: state,
                                                         openSettings: openSettings,
                                                         collapse: { [weak self] in
                                                             self?.setExpanded(false)
-                                                        }))
+                                                        })))
         hosting.sizingOptions = []
         panel.contentView = hosting
+        for receiver in [hosting, catcher] {
+            receiver.onEnter = { [weak self] in self?.setExpanded(true) }
+            receiver.onExit = { [weak self] in self?.scheduleCollapse() }
+            receiver.onDrop = { [weak self] urls in
+                self?.state.shelf.add(urls)
+                self?.setExpanded(true)
+            }
+        }
 
         triggerTracker.onEnter = { [weak self] in self?.setExpanded(true) }
         triggerTracker.attach(to: catcher)
@@ -143,8 +153,12 @@ final class NotchController {
     }
 
     private func scheduleCollapse() {
-        guard state.expanded, collapseWork == nil else { return }
-        let work = DispatchWorkItem { [weak self] in self?.setExpanded(false) }
+        guard state.expanded, !state.dragging, collapseWork == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.collapseWork = nil
+            if !self.state.dragging { self.setExpanded(false) }
+        }
         collapseWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
     }
@@ -222,8 +236,11 @@ struct NotchView: View {
                 VStack(spacing: 0) {
                     wings.frame(height: geometry.height)
                     if state.expanded {
-                        NotchPanel(system: monitor.state, clipboard: clipboard,
-                                   openSettings: openSettings, collapse: collapse)
+                        VStack(spacing: 10) {
+                            NotchPanel(system: monitor.state, clipboard: clipboard,
+                                       openSettings: openSettings, collapse: collapse)
+                            FileShelfView(state: state)
+                        }
                             .padding(.horizontal, 20)
                             .padding(.bottom, 12)
                             .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))

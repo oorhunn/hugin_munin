@@ -68,3 +68,17 @@ To add Ubuntu, implement both headers under `core/src/platform/linux/` and selec
 5. Clicking an entry calls `hm_clipboard_restore`, which writes the content back to the
    pasteboard; the user pastes it with Cmd+V. The notch also opens without the pointer, through
    the global shortcut registered in `HotKey.swift` with Carbon's `RegisterEventHotKey`.
+## File shelf
+
+`hm::FileShelf` in `core/include/hm/file_shelf.hpp` keeps an ordered, deduplicated list of
+absolute paths for the current session, exposed through the C bridge. It never performs
+filesystem operations. Shelf mutations happen on the UI thread.
+
+`FileShelf.swift` adapts macOS file pasteboards to the core and renders the shelf inside the
+expanded notch. AppKit drop receivers on both the collapsed trigger and expanded panel accept
+file URLs, including folders. Dragging over the collapsed trigger opens the panel. The drag
+source offers copy and move to other applications; the destination chooses the operation using
+normal macOS rules. A completed copy or move removes the reference, while cancellation retains it.
+The panel stays expanded during an outgoing drag. Entries can also be removed without deleting
+anything. Paths are not persisted or tracked after an external rename/move; an unavailable item
+cannot be dragged and can be dismissed with its × button.

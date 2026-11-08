@@ -10,6 +10,15 @@
 extern "C" {
 #endif
 
+// Main-thread-only session shelf. Returned paths remain valid until the next mutation.
+typedef struct hm_file_shelf hm_file_shelf;
+hm_file_shelf *hm_file_shelf_create(void);
+void hm_file_shelf_destroy(hm_file_shelf *shelf);
+int hm_file_shelf_add(hm_file_shelf *shelf, const char *path);
+void hm_file_shelf_remove(hm_file_shelf *shelf, const char *path);
+size_t hm_file_shelf_count(const hm_file_shelf *shelf);
+const char *hm_file_shelf_path(const hm_file_shelf *shelf, size_t index);
+
 // Percentages are NaN and sizes are zero until the value is known.
 typedef struct {
     double cpu_percent, memory_percent, disk_percent, gpu_percent;

@@ -38,6 +38,8 @@
 | 2026-11-05 | The clipboard history is shown in the expanded notch panel below the metrics, and that panel grew from 112 to 320 points. | The notch UI and Settings are the only surfaces; a clipboard window would be a third. Proposed during the build. |
 | 2026-11-05 | The capacity and the shortcut are saved in `UserDefaults` with the other preferences. | Follows the existing Settings pattern. Proposed during the build. |
 
+| 2026-11-06 | The notch file shelf holds session-only path references, with AppKit file drags and C++ membership logic. | Originals stay in place until the destination handles a move/copy. Successful exports clear entries; cancelled drags retain them. No extra UI surface or storage copy is needed. |
+
 ## Open questions
 
 - **Should releases be signed with a Developer ID and notarized?** macOS blocks the app after

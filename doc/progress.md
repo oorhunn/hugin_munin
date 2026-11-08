@@ -4,11 +4,31 @@ What has been accomplished, newest first.
 
 ## 2026-11-08
 
+- Merged main’s file shelf into the clipboard branch, retaining both features in the notch
+  and extending the panel to fit both. The combined build, all six tests, formatting, and
+  the 10-second app launch smoke test pass. Interactive shelf and clipboard layout remains
+  unverified on a physical notch display.
+
 - Fixed PR CI formatting violations using the same clang-format 23.1.4 version as CI.
 - Replaced the launch-at-login binding's method reference with an explicit closure to avoid
   the Swift 6.3.3 compiler's crashing isolated Boolean callback reabstraction thunk.
   Local build, all five tests, formatting check, and the 10-second app launch smoke test pass
   with Swift 6.4. Verification on the hosted Swift 6.3.3 toolchain remains pending.
+## 2026-11-06
+
+- Investigated a Swift 6.3.3 CI compiler crash generating an isolated Boolean callback wrapper.
+  Shelf callback annotations and then direct notch state access did not resolve it. Located a
+  remaining bound-method conversion in the Launch at login binding and replaced it with an
+  explicit closure. Local Swift 6.4 build, tests, and smoke test pass. All five CI checks passed
+  on commit `ced4a04`, including Debug and Release builds on Swift 6.3.3.
+
+- Added a temporary file/folder shelf to the expanded notch, with drops onto the collapsed trigger
+  opening the panel. Shelf entries show file icons, support dragging to external destinations,
+  and have a remove button that leaves originals intact.
+- Added C++ shelf membership and a C bridge, including normalization and duplicate rejection.
+- Built the app, passed all five test programs, and passed the 10-second launch smoke test.
+- Real Finder drag/drop, copy/move, cancellation, scrolling, and physical notch interactions
+  remain unverified; the manual checklist is in `development.md`.
 
 ## 2026-11-05
 

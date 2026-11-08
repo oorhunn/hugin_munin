@@ -28,6 +28,7 @@ To quit the app, hover over the notch and click **Quit**.
 | `collectors_test` | Yes | The platform backend |
 | `clipboard_test` | No | The clipboard history and watcher with a fake pasteboard |
 | `bridge_test` | Yes | The C interface, through the real backend and pasteboard |
+| `file_shelf_test` | No | Shelf bridge, path normalization, duplicate rejection, removal, and bounds |
 
 Tests use the small `require` helper in `tests/check.hpp` rather than a framework.
 
@@ -81,3 +82,12 @@ a build:
 ```sh
 vtool -show-build build/HuginMunin.app/Contents/MacOS/HuginMunin
 ```
+
+## Manual shelf checks
+
+On a Mac, drag a disposable document and folder from Finder onto the collapsed notch, then
+check both entries in the expanded shelf. Drag each to a Finder destination and verify the
+destination and original according to Finder's chosen copy/move operation. Repeat with Option
+held for a copy. Cancel a drag with Escape and confirm its entry remains. Use × and confirm
+the original still exists. Try duplicate drops, enough entries to scroll, and an item renamed
+outside the app. Quit and reopen to confirm the session shelf clears.

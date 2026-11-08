@@ -1,6 +1,7 @@
 #include "hm_bridge.h"
 
 #include "hm/clipboard.hpp"
+#include "hm/file_shelf.hpp"
 #include "hm/sampler.hpp"
 
 #include <chrono>
@@ -162,5 +163,38 @@ bool hm_clipboard_restore(hm_clipboard *clipboard, uint64_t id) {
 void hm_clipboard_clear(hm_clipboard *clipboard) {
     if (clipboard)
         clipboard->watcher.clear();
+}
+}
+
+struct hm_file_shelf {
+    hm::FileShelf value;
+};
+
+extern "C" {
+hm_file_shelf *hm_file_shelf_create(void) {
+    try {
+        return new hm_file_shelf;
+    } catch (...) {
+        return nullptr;
+    }
+}
+void hm_file_shelf_destroy(hm_file_shelf *shelf) { delete shelf; }
+int hm_file_shelf_add(hm_file_shelf *shelf, const char *path) {
+    try {
+        return shelf && path && shelf->value.add(path);
+    } catch (...) {
+        return 0;
+    }
+}
+void hm_file_shelf_remove(hm_file_shelf *shelf, const char *path) {
+    if (shelf && path)
+        shelf->value.remove(path);
+}
+size_t hm_file_shelf_count(const hm_file_shelf *shelf) {
+    return shelf ? shelf->value.paths().size() : 0;
+}
+const char *hm_file_shelf_path(const hm_file_shelf *shelf, size_t index) {
+    return shelf && index < shelf->value.paths().size() ? shelf->value.paths()[index].c_str()
+                                                        : nullptr;
 }
 }
