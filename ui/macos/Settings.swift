@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Observation
 import ServiceManagement
 import SwiftUI
@@ -41,9 +42,12 @@ enum Metric: String, CaseIterable, Identifiable {
 @MainActor @Observable
 final class Settings {
     static let intervals: [Double] = [0.5, 1, 2, 5, 10]
+    static let clipboardCapacities: [Int] = [10, 25, 50, 100, 200]
 
     @ObservationIgnored var onIntervalChange: ((Double) -> Void)?
     @ObservationIgnored var onWingMetricsChange: (() -> Void)?
+    @ObservationIgnored var onClipboardCapacityChange: ((Int) -> Void)?
+    @ObservationIgnored var onShortcutChange: ((HotKey) -> Void)?
 
     var interval: Double {
         didSet {
@@ -60,6 +64,24 @@ final class Settings {
         }
     }
 
+    /// How many copies the clipboard history keeps.
+    var clipboardCapacity: Int {
+        didSet {
+            UserDefaults.standard.set(clipboardCapacity, forKey: "clipboardCapacity")
+            onClipboardCapacityChange?(clipboardCapacity)
+        }
+    }
+
+    /// The shortcut that opens the clipboard history.
+    var shortcut: HotKey {
+        didSet {
+            let defaults = UserDefaults.standard
+            defaults.set(Int(shortcut.keyCode), forKey: "shortcutKeyCode")
+            defaults.set(Int(shortcut.modifiers), forKey: "shortcutModifiers")
+            onShortcutChange?(shortcut)
+        }
+    }
+
     /// The chosen metrics in screen order, with the first half left of the notch.
     private var orderedWingMetrics: [Metric] { Metric.allCases.filter(wingMetrics.contains) }
     private var leftCount: Int { (orderedWingMetrics.count + 1) / 2 }
@@ -72,6 +94,17 @@ final class Settings {
         interval = Self.intervals.contains(saved) ? saved : 1
         wingMetrics = defaults.stringArray(forKey: "wingMetrics")
             .map { Set($0.compactMap(Metric.init(rawValue:))) } ?? Set(Metric.allCases)
+        let savedCapacity = defaults.integer(forKey: "clipboardCapacity")
+        clipboardCapacity = Self.clipboardCapacities.contains(savedCapacity) ? savedCapacity : 50
+        if defaults.object(forKey: "shortcutKeyCode") == nil {
+            shortcut = .standard
+        } else {
+            let saved = HotKey(keyCode: UInt32(defaults.integer(forKey: "shortcutKeyCode")),
+                               modifiers: UInt32(defaults.integer(forKey: "shortcutModifiers")))
+            // Migrate the former default while preserving custom combinations.
+            let oldDefault = HotKey(keyCode: UInt32(kVK_ANSI_C), modifiers: UInt32(cmdKey | shiftKey))
+            shortcut = saved.isValid && saved != oldDefault ? saved : .standard
+        }
     }
 }
 
@@ -104,6 +137,7 @@ final class LoginItem {
 struct SettingsView: View {
     @Bindable var settings: Settings
     let loginItem: LoginItem
+    let shortcutRecorder: ShortcutRecorder
 
     var body: some View {
         Form {
@@ -120,11 +154,18 @@ struct SettingsView: View {
                     }
                 }
             }
-            // An explicit closure avoids Swift 6.3's IR-generation crash when adapting
-            // the isolated bound method to Binding's Boolean setter.
-            Toggle("Launch at login", isOn: Binding(
-                get: { loginItem.isOn }, set: { loginItem.set($0) }
-            ))
+            Picker("Clipboard history", selection: $settings.clipboardCapacity) {
+                ForEach(Settings.clipboardCapacities, id: \.self) { capacity in
+                    Text("\(capacity) copies").tag(capacity)
+                }
+            }
+            ShortcutPicker(settings: settings, recorder: shortcutRecorder)
+            LabeledContent("Paste on release") {
+                Button("Allow Accessibility…") { ClipboardPasteDelivery.requestPermission() }
+            }
+            Text("Automatic paste needs Accessibility permission. Without it, releasing copies the selection; paste with ⌘V.")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("Launch at login", isOn: Binding(get: { loginItem.isOn }, set: { loginItem.set($0) }))
             if loginItem.status == .requiresApproval {
                 HStack {
                     Text("Needs your approval in System Settings.")
@@ -138,7 +179,7 @@ struct SettingsView: View {
         }
         .pickerStyle(.segmented)
         .padding(20)
-        .frame(width: 420)
+        .frame(width: 440)
         .fixedSize()
     }
 
@@ -153,14 +194,83 @@ struct SettingsView: View {
     }
 }
 
+/// Records a new global shortcut. A click starts listening; the next key combination that has
+/// Cmd, Option, or Control in it becomes the shortcut, and Escape cancels. A class, because the
+/// project keeps UI state in `@Observable` objects rather than `@State`.
+@MainActor @Observable
+final class ShortcutRecorder {
+    private(set) var recording = false
+    @ObservationIgnored private var monitor: Any?
+    @ObservationIgnored var onRecord: ((HotKey) -> Void)?
+
+    func toggle() { recording ? cancel() : begin() }
+
+    func cancel() {
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+        recording = false
+    }
+
+    private func begin() {
+        guard !recording else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            MainActor.assumeIsolated { self?.press(event) }
+            return nil // the recorder swallows every key while it listens
+        }
+        recording = true
+    }
+
+    private func press(_ event: NSEvent) {
+        let pressed = HotKey(keyCode: UInt32(event.keyCode),
+                             modifiers: HotKey.carbonModifiers(event.modifierFlags))
+        if pressed.isEscape {
+            cancel()
+        } else if pressed.isValid {
+            onRecord?(pressed)
+            cancel()
+        }
+    }
+}
+
+/// Records a new global shortcut: click, press a key combination with Cmd, Option, or Control in
+/// it, and it takes effect immediately. Escape cancels the recording.
+private struct ShortcutPicker: View {
+    @Bindable var settings: Settings
+    let recorder: ShortcutRecorder
+
+    var body: some View {
+        LabeledContent("Open clipboard history") {
+            HStack(spacing: 8) {
+                Button(recorder.recording ? "Press keys…" : settings.shortcut.label) {
+                    recorder.toggle()
+                }
+                .frame(minWidth: 130)
+                if settings.shortcut != .standard {
+                    Button("Reset") { settings.shortcut = .standard }
+                }
+            }
+        }
+        .onDisappear { recorder.cancel() }
+    }
+}
+
 /// Owns the settings window. The app has no Dock icon, so opening it must activate the app.
 @MainActor
 final class SettingsWindowController {
     private let settings: Settings
     private let loginItem = LoginItem()
+    private let shortcutRecorder: ShortcutRecorder
     private var window: NSWindow?
 
-    init(settings: Settings) { self.settings = settings }
+    init(settings: Settings) {
+        self.settings = settings
+        shortcutRecorder = ShortcutRecorder()
+        shortcutRecorder.onRecord = { [weak settings] shortcut in
+            settings?.shortcut = shortcut
+        }
+    }
 
     func show() {
         loginItem.refresh()
@@ -172,7 +282,8 @@ final class SettingsWindowController {
 
     private func makeWindow() -> NSWindow {
         let window = NSWindow(contentViewController: NSHostingController(
-            rootView: SettingsView(settings: settings, loginItem: loginItem)
+            rootView: SettingsView(settings: settings, loginItem: loginItem,
+                                   shortcutRecorder: shortcutRecorder)
         ))
         window.title = "Hugin & Munin Settings"
         window.styleMask = [.titled, .closable]

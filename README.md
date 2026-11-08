@@ -14,9 +14,14 @@
 
 ## Status
 
-The macOS app shows live CPU, memory, disk, and GPU usage side by side around the notch. Hover over
-the notch to expand it, and open **Settings** from there to change the update interval, the metrics
-beside the notch, and launch at login.
+The macOS app shows live CPU, memory, disk, and GPU usage side by side around the notch, and
+keeps a clipboard history of text and images: hover over the notch and click an entry, or press **Cmd+Shift+V** to open the preview.
+Keep **Cmd+Shift** held and use **← / →** to browse. Release the modifiers to paste the
+selection and close the preview; **Escape** cancels. Enable Accessibility through **Settings →
+Paste on release** for automatic paste. Without permission, release copies the item for **Cmd+V**.
+The preview background is 70% opaque (30% transparent). Open **Settings** from
+the expanded notch to change the update interval, the metrics beside the notch, the clipboard
+history length and its shortcut, and launch at login.
 
 Drop documents or folders onto the notch to keep them on the **File shelf**. Drag a shelf item to
 Finder or another app when ready. Successful moves or copies remove the entry; cancelled drags

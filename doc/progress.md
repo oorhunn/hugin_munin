@@ -2,6 +2,42 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-08
+
+- Merged main’s clang-tidy CI setup into the clipboard branch, retaining both documentation
+  changes. Made the formatter language-neutral so Objective-C++ remains supported, and
+  fixed clipboard findings under the new lint checks (unsigned byte masks, size arithmetic,
+  explicit/nodiscard declarations, scoped locks, and a const value preventing a move).
+  Local clang-tidy 23.1.4, formatting, build, all six tests, and launch smoke check pass.
+
+- Changed the keyboard preview to hold-to-browse: release all shortcut modifiers to restore the
+  selection, dismiss, and send Cmd+V to the original app. Escape and focus loss cancel.
+  Automatic paste requires Accessibility permission, requested through Settings; without it,
+  release still copies and closes. Delivery is skipped if the original app is no longer active.
+  The preview background is now 70% opaque and the file shelf is hidden while previewing.
+- Release-to-paste local validation: Swift build, all six tests, and the 10-second launch
+  smoke check pass. Interactive permission, focus, and paste delivery remain unverified
+  on a physical desktop session.
+
+- Changed the default clipboard shortcut to Cmd+Shift+V and migrated the former default while
+  retaining custom shortcuts. The shortcut opens a keyboard-focused preview inside the notch:
+  left/right browse a selected text/image, Return restores it, and Escape closes. Keyboard mode
+  stays open independently of pointer hover and dismisses on focus loss. Browsing preserves
+  selection by entry id when new copies arrive, falling back to the newest if an entry is evicted.
+- Keyboard preview validation: local Swift build, all six tests, and the 10-second launch smoke
+  test pass. Physical keyboard interaction and focus return remain unverified; a manual
+  checklist was added to `development.md`.
+
+- Merged main’s file shelf into the clipboard branch, retaining both features in the notch
+  and extending the panel to fit both. The combined build, all six tests, formatting, and
+  the 10-second app launch smoke test pass. Interactive shelf and clipboard layout remains
+  unverified on a physical notch display.
+
+- Fixed PR CI formatting violations using the same clang-format 23.1.4 version as CI.
+- Replaced the launch-at-login binding's method reference with an explicit closure to avoid
+  the Swift 6.3.3 compiler's crashing isolated Boolean callback reabstraction thunk.
+  Local build, all five tests, formatting check, and the 10-second app launch smoke test pass
+  with Swift 6.4. Verification on the hosted Swift 6.3.3 toolchain remains pending.
 ## 2026-11-06
 
 - Merged `main` into the GPU and CI branch. The first CI run of the branch failed in both builds
@@ -33,6 +69,55 @@ What has been accomplished, newest first.
 
 ## 2026-11-05
 
+- Added the copy/paste buffer: a clipboard history of text and images, restored on click.
+  - The core keeps a bounded history (`core/src/clipboard.cpp`): 50 entries by default, 1 to 500
+    in Settings, and at most 64 MiB of payload in total, evicting the oldest first. Content equal
+    to an existing entry reuses it and moves it to the front, so each distinct payload appears
+    once, most recent first. Ids are never reused.
+  - The pasteboard sits behind a second platform boundary (`core/include/hm/pasteboard.hpp`),
+    implemented for macOS in `core/src/platform/macos/pasteboard.mm` with `NSPasteboard`: text is
+    preferred when both are present, images are kept as TIFF, and PNG is converted. The watcher
+    polls the change count every 0.5 s, because there is no event API for other processes' copies
+    without privileges. Its own writes are marked seen, so a restore is not recorded as a copy.
+  - The bridge grew the `hm_clipboard_*` C API: a malloc'd deep-copy snapshot with a 255-byte
+    UTF-8 text preview per entry, capacity changes while running, restore, and clear.
+  - The notch panel now shows the history below the metrics: click an entry to put it back on the
+    clipboard, then paste with Cmd+V. Rows show a thumbnail, the preview, the byte size, and a
+    relative time; a Clear button empties the history. The expanded panel grew from 112 to 320
+    points to fit the list.
+  - A global shortcut opens the history by expanding the notch: Cmd+Shift+C by default, editable
+    in Settings through a key recorder, saved in UserDefaults with the capacity. It is registered
+    with Carbon's `RegisterEventHotKey`, which needs no Accessibility permission.
+  - Restoring writes the entry back to the pasteboard and moves it to the front. Pasting into the
+    frontmost app automatically would need Accessibility permission, so the user pastes with
+    Cmd+V; this is the documented semantic.
+- Fixed during testing: a poll can land inside another process's pasteboard write, between the
+  clear and the new contents, when the change count has already moved but the data is not there.
+  The first version marked such a count as seen and lost the copy forever; `bridge_test` failed
+  about two runs in three because of it. The tracker now retries an empty or failed read once on
+  the next poll before treating the count as settled.
+- Tests:
+  - `clipboard_test` drives the core with a fake pasteboard: history and dedup rules, capacity
+    clamps and eviction, the byte budget, image and kind handling, the poll's retry for mid-write
+    and failed reads, own-write suppression, and the watcher thread's notifications, restore,
+    live capacity change, and clear.
+  - `bridge_test` gained a live pasteboard round trip: start, two text copies, restore, image
+    bytes across the bridge, clear, stop. It temporarily replaces the clipboard's contents, which
+    is unavoidable behind the C interface.
+- Verified on macOS 27.0.1 (Apple clang 21, Swift 6):
+  - All five test programs pass in Debug, and under ASan with UBSan. `clipboard_test` and
+    `bridge_test` pass under TSan; TSan first flagged a race in the test's own fake pasteboard,
+    fixed by giving the fake a mutex, like the system gives the real one.
+    `bridge_test` was run five more times to check the mid-write fix holds.
+  - `clang-format` is clean, and the check now covers `*.mm` in CI and the docs, because the
+    pasteboard backend is Objective-C++.
+  - `scripts/smoke_test.sh` passes: the app stays running for 10 s. Launched by hand, it also
+    stayed alive through two real copies made with `pbcopy`.
+- Not verified by hand: the notch list itself and the Cmd+Shift+C shortcut on a real keyboard, as
+  that needs an interactive session on a Mac with a notch. A shortcut that another app already
+  registered is silently unavailable; the register call's result is not surfaced in the UI. The
+  list also has no keyboard navigation, and its relative timestamps refresh only when the
+  history changes.
 - Added GPU usage and put CPU, memory, disk, and GPU side by side in the notch and its panel.
   - Ported GPU reading from `resource_visualizer`, keeping only utilization and core count. With
     several GPUs, the notch shows the busiest one.

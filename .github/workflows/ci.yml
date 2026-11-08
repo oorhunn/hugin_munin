@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
       - name: Check C++ formatting
         run: >
-          git ls-files '*.cpp' '*.hpp' '*.h' |
+          git ls-files '*.cpp' '*.hpp' '*.h' '*.mm' |
           xargs pipx run --spec clang-format==23.1.4 clang-format --dry-run -Werror
 
   lint:
