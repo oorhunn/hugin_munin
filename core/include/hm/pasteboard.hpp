@@ -15,8 +15,8 @@ struct ClipboardContent {
     enum class Kind { text, image };
 
     Kind kind = Kind::text;
-    std::string text;                 // UTF-8, valid when kind is text
-    std::vector<std::uint8_t> bytes;  // TIFF, valid when kind is image
+    std::string text;                // UTF-8, valid when kind is text
+    std::vector<std::uint8_t> bytes; // TIFF, valid when kind is image
 
     std::size_t size() const { return kind == Kind::text ? text.size() : bytes.size(); }
 

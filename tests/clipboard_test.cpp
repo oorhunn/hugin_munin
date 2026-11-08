@@ -34,23 +34,22 @@ struct FakePasteboard {
     std::vector<hm::ClipboardContent> writes;
 
     hm::PasteboardSources sources() {
-        return {
-            [this] {
-                const std::lock_guard lock(mutex);
-                return count;
-            },
-            [this]() -> hm::Collected<hm::ClipboardContent> {
-                const std::lock_guard lock(mutex);
-                if (fail_read || current.size() == 0)
-                    return std::unexpected("nothing on the pasteboard");
-                return current;
-            },
-            [this](const hm::ClipboardContent &content) -> hm::Collected<void> {
-                const std::lock_guard lock(mutex);
-                writes.push_back(content);
-                ++count;
-                return {};
-            }};
+        return {[this] {
+                    const std::lock_guard lock(mutex);
+                    return count;
+                },
+                [this]() -> hm::Collected<hm::ClipboardContent> {
+                    const std::lock_guard lock(mutex);
+                    if (fail_read || current.size() == 0)
+                        return std::unexpected("nothing on the pasteboard");
+                    return current;
+                },
+                [this](const hm::ClipboardContent &content) -> hm::Collected<void> {
+                    const std::lock_guard lock(mutex);
+                    writes.push_back(content);
+                    ++count;
+                    return {};
+                }};
     }
 
     /// Simulates a copy: new contents at a new change count.
@@ -85,8 +84,7 @@ void history_rules() {
     require(c && history.entries().size() == 3, "Capacity 3 holds three entries");
     const auto d = history.capture(text("delta"), now);
     require(d && history.entries().size() == 3, "Capacity 3 still holds three entries");
-    require(history.entries().back().content.text == "alpha",
-            "The oldest entry is evicted first");
+    require(history.entries().back().content.text == "alpha", "The oldest entry is evicted first");
     require(!history.content(*b), "An evicted entry is gone");
 
     require(!history.capture(text(""), now), "Empty content is not recorded");
@@ -104,8 +102,7 @@ void history_rules() {
     require(history.entries().size() == 2 && history.total_bytes() <= 1000,
             "Lowering the capacity drops the oldest entries");
     history.set_capacity(0);
-    require(history.capacity() == 1 && history.entries().size() == 1,
-            "Capacity is at least 1");
+    require(history.capacity() == 1 && history.entries().size() == 1, "Capacity is at least 1");
     hm::ClipboardHistory huge(100000);
     require(huge.capacity() == 500, "Capacity is at most 500");
     require(hm::clamp_clipboard_capacity(hm::clipboard_default_capacity) == 50,
@@ -158,8 +155,7 @@ void tracker_rules() {
 
     pasteboard.current = text("first");
     require(tracker.poll(), "The first pass seeds the history");
-    require(history.entries().size() == 1 &&
-                history.entries().front().content.text == "first",
+    require(history.entries().size() == 1 && history.entries().front().content.text == "first",
             "The seeded entry matches the pasteboard");
 
     require(!tracker.poll(), "An unchanged pasteboard is not read again");

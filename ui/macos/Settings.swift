@@ -157,7 +157,7 @@ struct SettingsView: View {
                 }
             }
             ShortcutPicker(settings: settings, recorder: shortcutRecorder)
-            Toggle("Launch at login", isOn: Binding(get: { loginItem.isOn }, set: loginItem.set))
+            Toggle("Launch at login", isOn: Binding(get: { loginItem.isOn }, set: { loginItem.set($0) }))
             if loginItem.status == .requiresApproval {
                 HStack {
                     Text("Needs your approval in System Settings.")

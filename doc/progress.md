@@ -2,6 +2,14 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-08
+
+- Fixed PR CI formatting violations using the same clang-format 23.1.4 version as CI.
+- Replaced the launch-at-login binding's method reference with an explicit closure to avoid
+  the Swift 6.3.3 compiler's crashing isolated Boolean callback reabstraction thunk.
+  Local build, all five tests, formatting check, and the 10-second app launch smoke test pass
+  with Swift 6.4. Verification on the hosted Swift 6.3.3 toolchain remains pending.
+
 ## 2026-11-05
 
 - Added the copy/paste buffer: a clipboard history of text and images, restored on click.

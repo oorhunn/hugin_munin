@@ -46,8 +46,7 @@ std::optional<std::uint64_t> ClipboardHistory::capture(ClipboardContent content,
     }
     const auto id = next_id_++;
     total_bytes_ += content.size();
-    entries_.insert(entries_.begin(),
-                    ClipboardEntry{id, std::move(content), now});
+    entries_.insert(entries_.begin(), ClipboardEntry{id, std::move(content), now});
     evict_while_over_limits();
     return id;
 }
