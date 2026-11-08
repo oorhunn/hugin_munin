@@ -4,6 +4,13 @@ What has been accomplished, newest first.
 
 ## 2026-11-08
 
+- Replaced the root `.clang-format` with a new style and reformatted all C++ and Objective-C++ to
+  it. The style uses a 2-space indent, 80 columns, no short blocks, functions, or loops on one line,
+  and braces on their own line after functions and enums. The requested file also set
+  `Language: Cpp`, which was left out because clang-format then refuses `pasteboard.mm` and the CI
+  Format job fails. The change is formatting only. Local clang-format and clang-tidy 23.1.4, a
+  Debug build, all six tests, and the launch smoke check pass. Open branches will need to be
+  reformatted or will conflict when they merge this.
 - Moved the clipboard preview out of the notch into a window in the middle of the screen, at
   Flycut's size, with scroll and double click as in Flycut. The notch now has no clipboard content
   and returned to its 238-point panel. Clipboard controls moved to a Clipboard section in Settings,
