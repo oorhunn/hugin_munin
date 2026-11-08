@@ -17,6 +17,9 @@ namespace hm {
 
 // The latest known system state. A failed memory or disk read keeps the previous value.
 struct Sample {
+    std::optional<MemoryPressure> memory_pressure;
+    bool memory_fresh = false;
+    bool disk_fresh = false;
     std::optional<double> cpu_percent; // empty until two CPU readings can be compared
     std::size_t core_count = 0;
     std::optional<Memory> memory;
@@ -30,6 +33,7 @@ struct Sources {
     std::function<Collected<Memory>()> memory = collect_memory;
     std::function<Collected<Disk>()> disk = collect_disk;
     std::function<Collected<std::vector<Gpu>>()> gpus = collect_gpus;
+    std::function<Collected<MemoryPressure>()> memory_pressure = collect_memory_pressure;
 };
 
 struct Intervals {

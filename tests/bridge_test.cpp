@@ -128,7 +128,7 @@ int main() {
     auto *sampler = hm_sampler_start(receive, &received, 10);
     require(sampler != nullptr, "Sampler starts");
     hm_sampler_set_interval(sampler, 0.25);
-    for (int i = 0; i < 500 && received.calls < 2; ++i)
+    for (int i = 0; i < 500 && received.calls < 8; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     hm_sampler_stop(sampler);
 

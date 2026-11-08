@@ -4,6 +4,11 @@ What has been accomplished, newest first.
 
 ## 2026-11-08
 
+- Ported the MCP resource coordination utilities onto current `main`, preserving clipboard
+  history, its separate preview, and the file shelf. Jobs appear above the shelf in the hover panel.
+  The combined build, all eight tests, formatting, clang-tidy on changed C++ sources, and the
+  10-second app launch smoke test pass. The expanded hover layout remains visually unverified.
+
 - Moved the clipboard preview out of the notch into a window in the middle of the screen, at
   Flycut's size, with scroll and double click as in Flycut. The notch now has no clipboard content
   and returned to its 238-point panel. Clipboard controls moved to a Clipboard section in Settings,
@@ -76,6 +81,40 @@ What has been accomplished, newest first.
   Local build, all five tests, formatting check, and the 10-second app launch smoke test pass
   with Swift 6.4. Verification on the hosted Swift 6.3.3 toolchain remains pending.
 ## 2026-11-06
+
+- Added bundled C++23 `hm-service`, `hm-mcp`, and `hm-run` utilities. A private per-user service
+  now owns sampling and advisory CPU/RAM/disk/GPU reservations shared by the app and MCP clients.
+- Added registration, FIFO job admission, application-supplied and revised estimates, heartbeats,
+  conservative orphan holds, ownership checks, bounded history, memory pressure, and freshness.
+- Expanded the existing notch hover panel with a scrollable jobs list, states, app estimates,
+  and pause/resume admission control. Kept the four metrics and settings UI.
+- Added utility setup/usage documentation and removed the excluded connection-diagnostic scope
+  from the accepted plan. The full staged plan still includes future work; current limitations
+  are documented explicitly in `resource-coordination.md`.
+- Verification: normal and ASan/UBSan builds each pass all six tests, including two independent
+  MCP clients sharing one service. C++ formatting passes. The app stays running in its 10-second
+  smoke test. The UI tool exposed only the transparent hover-catcher window, so the expanded
+  layout was not visually verified on the Mac.
+- A live runner smoke test initially remained queued under system pressure and exposed a queue
+  admission issue after the test client exited. Fixed admission to require an owning-client
+  request/poll, added a regression check, and cleared the isolated test reservation after
+  confirming no test command survived. A subsequent registered `/usr/bin/true` command completed
+  through `hm-run` with exit status 0. Sustained workload calibration is still future work.
+
+- Investigated a Swift 6.3.3 CI compiler crash generating an isolated Boolean callback wrapper.
+  Shelf callback annotations and then direct notch state access did not resolve it. Located a
+  remaining bound-method conversion in the Launch at login binding and replaced it with an
+  explicit closure. Local Swift 6.4 build, tests, and smoke test pass. All five CI checks passed
+  on commit `ced4a04`, including Debug and Release builds on Swift 6.3.3.
+
+- Added a temporary file/folder shelf to the expanded notch, with drops onto the collapsed trigger
+  opening the panel. Shelf entries show file icons, support dragging to external destinations,
+  and have a remove button that leaves originals intact.
+- Added C++ shelf membership and a C bridge, including normalization and duplicate rejection.
+- Built the app, passed all five test programs, and passed the 10-second launch smoke test.
+- Real Finder drag/drop, copy/move, cancellation, scrolling, and physical notch interactions
+  remain unverified; the manual checklist is in `development.md`.
+
 
 - Merged `main` into the GPU and CI branch. The first CI run of the branch failed in both builds
   with the Swift 6.3.3 compiler crash described below, because the branch predated the fix to the

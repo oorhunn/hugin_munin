@@ -17,7 +17,11 @@ const Sample &SampleTracker::update(std::chrono::steady_clock::time_point now) {
     } else {
         sample_.cpu_percent.reset();
     }
-    if (const auto memory = sources_.memory())
+    const auto pressure = sources_.memory_pressure();
+    sample_.memory_pressure = pressure ? std::optional(*pressure) : std::nullopt;
+    const auto memory = sources_.memory();
+    sample_.memory_fresh = memory.has_value();
+    if (memory)
         sample_.memory = *memory;
     if (const auto gpus = sources_.gpus(); gpus && !gpus->empty()) {
         sample_.gpu_percent = busiest_gpu(*gpus);
@@ -27,7 +31,9 @@ const Sample &SampleTracker::update(std::chrono::steady_clock::time_point now) {
     }
     if (!last_disk_read_ || now - *last_disk_read_ >= disk_interval_) {
         last_disk_read_ = now;
-        if (const auto disk = sources_.disk())
+        const auto disk = sources_.disk();
+        sample_.disk_fresh = disk.has_value();
+        if (disk)
             sample_.disk = *disk;
     }
     return sample_;
