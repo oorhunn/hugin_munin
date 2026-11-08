@@ -1,4 +1,5 @@
 import AppKit
+@preconcurrency import ApplicationServices
 import Carbon.HIToolbox
 
 /// A keyboard shortcut, stored as a Carbon key code plus Carbon modifier flags so it can go
@@ -126,6 +127,41 @@ final class HotKeyCenter {
         if RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, id,
                                GetApplicationEventTarget(), 0, &ref) == noErr {
             hotKey = ref
+        }
+    }
+}
+
+/// macOS-specific delivery of the selected clipboard item to the original application.
+@MainActor
+final class ClipboardPasteDelivery {
+    private var destination: NSRunningApplication?
+
+    static var isAllowed: Bool { AXIsProcessTrusted() }
+
+    static func requestPermission() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
+    }
+
+    func rememberDestination() {
+        destination = NSWorkspace.shared.frontmostApplication
+    }
+
+    func paste() {
+        guard Self.isAllowed, let destination, !destination.isTerminated,
+              destination.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        // Nonactivating panels leave the destination app active. Never deliver into another app
+        // if the user switched away while the preview was open.
+        let pid = destination.processIdentifier
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
+                  let source = CGEventSource(stateID: .privateState),
+                  let down = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false) else { return }
+            down.flags = .maskCommand
+            up.flags = .maskCommand
+            down.postToPid(pid)
+            up.postToPid(pid)
         }
     }
 }

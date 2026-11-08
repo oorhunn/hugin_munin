@@ -63,9 +63,15 @@ final class NotchState {
 private final class ClipboardPanel: NSPanel {
     var onKey: ((UInt16) -> Bool)?
     var onDismiss: (() -> Void)?
+    var onModifiersReleased: (() -> Void)?
     override var canBecomeKey: Bool { true }
-    override func keyDown(with event: NSEvent) {
-        if onKey?(event.keyCode) != true { super.keyDown(with: event) }
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, onKey?(event.keyCode) == true { return }
+        if event.type == .flagsChanged,
+           event.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty {
+            onModifiersReleased?()
+        }
+        super.sendEvent(event)
     }
     override func resignKey() {
         super.resignKey()
@@ -85,10 +91,12 @@ final class NotchController {
     private let state: NotchState
     private let settings: Settings
     private let clipboard: ClipboardStore
+    private let pasteDelivery = ClipboardPasteDelivery()
     private let triggerTracker = HoverTracker()
     private let panelTracker = HoverTracker()
     private var screenObserver: NSObjectProtocol?
     private var collapseWork: DispatchWorkItem?
+    private var releaseTimer: Timer?
 
     init(monitor: Monitor, settings: Settings, clipboard: ClipboardStore,
          openSettings: @escaping () -> Void) {
@@ -188,6 +196,8 @@ final class NotchController {
     private func setExpanded(_ expanded: Bool) {
         cancelCollapse()
         if !expanded {
+            releaseTimer?.invalidate()
+            releaseTimer = nil
             clipboard.previewing = false
             if panel.isKeyWindow { panel.resignKey() }
         }
@@ -204,6 +214,8 @@ final class NotchController {
 
     /// Keyboard mode stays open independently of pointer hover until dismissed or restored.
     func openClipboardPreview() {
+        guard !clipboard.previewing else { return }
+        pasteDelivery.rememberDestination()
         clipboard.beginPreview()
         setExpanded(true)
         guard let keyboardPanel = panel as? ClipboardPanel else { return }
@@ -220,11 +232,25 @@ final class NotchController {
             }
             return true
         }
+        keyboardPanel.onModifiersReleased = { [weak self] in
+            guard let self, self.clipboard.previewing else { return }
+            let restored = self.clipboard.restoreSelected()
+            self.setExpanded(false)
+            if restored { self.pasteDelivery.paste() }
+        }
         keyboardPanel.onDismiss = { [weak self] in
             guard let self, self.clipboard.previewing else { return }
             self.setExpanded(false)
         }
         keyboardPanel.makeKeyAndOrderFront(nil)
+        // Also catches a fast release that happened before the panel became key.
+        releaseTimer = Timer.scheduledTimer(withTimeInterval: 0.04, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.clipboard.previewing,
+                      NSEvent.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty else { return }
+                (self.panel as? ClipboardPanel)?.onModifiersReleased?()
+            }
+        }
     }
 }
 
@@ -274,14 +300,14 @@ struct NotchView: View {
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
                 UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius)
-                    .fill(.black)
+                    .fill(.black.opacity(clipboard.previewing ? 0.70 : 1))
                 VStack(spacing: 0) {
                     wings.frame(height: geometry.height)
                     if state.expanded {
                         VStack(spacing: 10) {
                             NotchPanel(system: monitor.state, clipboard: clipboard,
                                        openSettings: openSettings, collapse: collapse)
-                            FileShelfView(state: state)
+                            if !clipboard.previewing { FileShelfView(state: state) }
                         }
                             .padding(.horizontal, 20)
                             .padding(.bottom, 12)
@@ -407,7 +433,9 @@ private struct ClipboardPreview: View {
                 Text("Copy text or an image to get started.")
                     .foregroundStyle(.secondary)
             }
-            Text("← → Browse    Return Copy    Esc Close    Then ⌘V to paste")
+            Text(ClipboardPasteDelivery.isAllowed
+                 ? "Hold shortcut modifiers · ← → Browse · Release to paste · Esc Cancel"
+                 : "Release to copy · Enable Accessibility in Settings for automatic paste")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .buttonStyle(.borderless)

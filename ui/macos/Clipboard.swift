@@ -43,8 +43,10 @@ final class ClipboardStore {
         selectedID = entries[index].id
     }
 
-    func restoreSelected() {
-        if let item = selectedItem { restore(item.id) }
+    @discardableResult
+    func restoreSelected() -> Bool {
+        guard let item = selectedItem else { return false }
+        return restore(item.id)
     }
 
     @ObservationIgnored private var clipboard: OpaquePointer?
@@ -65,9 +67,11 @@ final class ClipboardStore {
     }
 
     /// Puts the entry back on the clipboard and moves it to the front of the history.
-    func restore(_ id: UInt64) {
-        _ = hm_clipboard_restore(clipboard, id)
+    @discardableResult
+    func restore(_ id: UInt64) -> Bool {
+        let restored = hm_clipboard_restore(clipboard, id)
         reload()
+        return restored
     }
 
     func clear() {

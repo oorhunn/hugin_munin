@@ -4,6 +4,15 @@ What has been accomplished, newest first.
 
 ## 2026-11-08
 
+- Changed the keyboard preview to hold-to-browse: release all shortcut modifiers to restore the
+  selection, dismiss, and send Cmd+V to the original app. Escape and focus loss cancel.
+  Automatic paste requires Accessibility permission, requested through Settings; without it,
+  release still copies and closes. Delivery is skipped if the original app is no longer active.
+  The preview background is now 70% opaque and the file shelf is hidden while previewing.
+- Release-to-paste local validation: Swift build, all six tests, and the 10-second launch
+  smoke check pass. Interactive permission, focus, and paste delivery remain unverified
+  on a physical desktop session.
+
 - Changed the default clipboard shortcut to Cmd+Shift+V and migrated the former default while
   retaining custom shortcuts. The shortcut opens a keyboard-focused preview inside the notch:
   left/right browse a selected text/image, Return restores it, and Escape closes. Keyboard mode

@@ -102,3 +102,14 @@ unchanged. Verify clicking another app dismisses the preview, empty history is s
 copy or capacity eviction while browsing leaves a valid selection. Verify a custom shortcut
 still works after relaunch and Reset selects Cmd+Shift+V. These interactive checks require a
 macOS desktop session and have not been performed automatically.
+
+### Hold-to-paste preview verification
+
+This supersedes the release behavior in the earlier keyboard checklist. Enable Accessibility
+with Settings → Paste on release. In an editor, hold Cmd+Shift+V, release V while keeping the
+modifiers held, and browse with left/right. Release all modifiers: verify exactly one paste
+of the selected text/image and immediate dismissal. Check fast shortcut release, modifier
+release in both orders, Escape, empty history, and focus loss (no paste). Without Accessibility,
+verify selection is copied and the preview closes, with the permission hint visible beforehand.
+Check a custom shortcut with different modifiers and verify the 70% opaque background lets the
+underlying page remain visible. Automatic paste and these interactive checks are unverified.

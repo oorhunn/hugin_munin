@@ -160,6 +160,11 @@ struct SettingsView: View {
                 }
             }
             ShortcutPicker(settings: settings, recorder: shortcutRecorder)
+            LabeledContent("Paste on release") {
+                Button("Allow Accessibility…") { ClipboardPasteDelivery.requestPermission() }
+            }
+            Text("Automatic paste needs Accessibility permission. Without it, releasing copies the selection; paste with ⌘V.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Launch at login", isOn: Binding(get: { loginItem.isOn }, set: { loginItem.set($0) }))
             if loginItem.status == .requiresApproval {
                 HStack {
