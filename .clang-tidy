@@ -1,0 +1,34 @@
+# Finds bugs and modernization opportunities. Checks that only enforce a style this project does not
+# use stay off, and doc/development.md explains how to run this.
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  concurrency-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  -bugprone-easily-swappable-parameters,
+  -misc-const-correctness,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -modernize-avoid-c-arrays,
+  -modernize-use-designated-initializers,
+  -modernize-use-trailing-return-type,
+  -performance-enum-size,
+  -portability-avoid-pragma-once,
+  -readability-braces-around-statements,
+  -readability-function-cognitive-complexity,
+  -readability-identifier-length,
+  -readability-implicit-bool-conversion,
+  -readability-inconsistent-ifelse-braces,
+  -readability-magic-numbers,
+  -readability-math-missing-parentheses,
+  -readability-redundant-lambda-parameter-list,
+  -readability-trailing-comma
+# Headers under third_party/ and the SDK stay out of the results.
+WarningsAsErrors: '*'
+HeaderFilterRegex: '/(core|tests|utilities)/'
+FormatStyle: file

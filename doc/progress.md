@@ -4,6 +4,19 @@ What has been accomplished, newest first.
 
 ## 2026-11-06
 
+- Merged `main` into the GPU and CI branch. The first CI run of the branch failed in both builds
+  with the Swift 6.3.3 compiler crash described below, because the branch predated the fix to the
+  login toggle in `ced4a04`. The merge brings that fix in, and it needed no other Swift change.
+  The merged shelf code had one clang-tidy warning, fixed with `[[nodiscard]]`.
+- Added `clang-tidy` to the project and to CI.
+  - `.clang-tidy` covers bug-finding and modernization checks, `tests/.clang-tidy` turns off three
+    checks that do not fit test code, and style-only checks stay off.
+  - A new Lint job runs clang-tidy 23.1.4 and fails on any warning.
+  - `.clang-format` now names the language and the latest C++ standard. No file changed format.
+  - `third_party/.clang-format` turns formatting off for vendored code.
+  - Fixed the 9 warnings in the committed code, with no change in behavior: an `explicit`
+    constructor, `std::scoped_lock`, a `stop_token` passed by reference, an explicit `void *` cast,
+    and clearer declarations.
 - Investigated a Swift 6.3.3 CI compiler crash generating an isolated Boolean callback wrapper.
   Shelf callback annotations and then direct notch state access did not resolve it. Located a
   remaining bound-method conversion in the Launch at login binding and replaced it with an

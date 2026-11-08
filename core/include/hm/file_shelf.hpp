@@ -20,7 +20,7 @@ class FileShelf {
         return true;
     }
     void remove(const std::string &path) { std::erase(paths_, path); }
-    const std::vector<std::string> &paths() const { return paths_; }
+    [[nodiscard]] const std::vector<std::string> &paths() const { return paths_; }
 
   private:
     std::vector<std::string> paths_;
