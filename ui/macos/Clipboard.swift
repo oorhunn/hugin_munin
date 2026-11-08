@@ -56,7 +56,7 @@ final class ClipboardStore {
 
     /// Starts saving to `file`, or stops saving and deletes the saved history when it is nil.
     func setHistoryFile(_ file: URL?) {
-        withPath(file) { hm_clipboard_set_history_file(clipboard, $0) }
+        _ = withPath(file) { hm_clipboard_set_history_file(clipboard, $0) }
     }
 
     private func withPath<Result>(_ file: URL?, _ body: (UnsafePointer<CChar>?) -> Result) -> Result {

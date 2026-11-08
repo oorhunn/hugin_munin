@@ -65,8 +65,9 @@ typedef struct {
 hm_clipboard *hm_clipboard_start(hm_clipboard_callback callback, void *context, size_t capacity,
                                  const char *history_file);
 
-// Starts saving to `history_file`. NULL stops saving and deletes the file in use.
-void hm_clipboard_set_history_file(hm_clipboard *clipboard, const char *history_file);
+// Starts saving to `history_file`. NULL stops saving and deletes the file in use. Returns false if
+// the change could not be made, which leaves saving as it was.
+bool hm_clipboard_set_history_file(hm_clipboard *clipboard, const char *history_file);
 
 // Stops watching and frees `clipboard`. No callback runs after this returns. Accepts NULL.
 void hm_clipboard_stop(hm_clipboard *clipboard);

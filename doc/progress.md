@@ -10,6 +10,8 @@ What has been accomplished, newest first.
   with new Keep history after quitting and Clear History controls.
 - The clipboard history now survives restarts, text and images, in an owner-only unencrypted file.
   The core loads it at start and saves after each change. Clear and turning saving off delete it.
+- CI's clang-tidy flagged an empty `catch` in the bridge and an ignored save result. The bridge
+  call now reports failure, and the save result is kept with a note on why it is not retried.
 - The build, all six test programs, clang-format, the 10-second launch smoke test, and
   `clipboard_test` under ThreadSanitizer pass, and the running app wrote its history file with
   owner-only permissions. clang-tidy was not run because it is not installed locally. The

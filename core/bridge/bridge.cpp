@@ -100,15 +100,16 @@ hm_clipboard *hm_clipboard_start(hm_clipboard_callback callback, void *context, 
     }
 }
 
-void hm_clipboard_set_history_file(hm_clipboard *clipboard, const char *history_file) {
+bool hm_clipboard_set_history_file(hm_clipboard *clipboard, const char *history_file) {
     if (clipboard == nullptr)
-        return;
+        return false;
     try {
         clipboard->watcher.set_history_file(history_file != nullptr
                                                 ? std::filesystem::path(history_file)
                                                 : std::filesystem::path());
+        return true;
     } catch (const std::exception &) {
-        // Saving stays as it was, and the history in memory is unaffected.
+        return false;
     }
 }
 

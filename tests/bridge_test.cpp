@@ -34,7 +34,8 @@ void clipboard_round_trip() {
                 hm_clipboard_stack_jump(nullptr, 1) == 0,
             "The stack calls accept a missing watcher");
     hm_clipboard_stack_remove(nullptr);
-    hm_clipboard_set_history_file(nullptr, nullptr);
+    require(!hm_clipboard_set_history_file(nullptr, nullptr),
+            "Setting a history file without a watcher fails safely");
     size_t count = 7;
     require(hm_clipboard_snapshot(nullptr, &count) == nullptr && count == 0,
             "Snapshot without a watcher is empty");

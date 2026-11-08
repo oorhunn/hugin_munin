@@ -291,8 +291,9 @@ void ClipboardWatcher::save_if_dirty() {
         dirty_ = false;
         entries = history_.entries();
     }
-    // A failed save is retried with the next change. The history in memory is still good.
-    static_cast<void>(save_clipboard_history(history_file_, entries));
+    // A failed save is retried with the next change rather than on every poll, because each try
+    // can copy the whole history. The history in memory is still good.
+    [[maybe_unused]] const auto saved = save_clipboard_history(history_file_, entries);
 }
 
 void ClipboardWatcher::set_history_file(std::filesystem::path file) {
