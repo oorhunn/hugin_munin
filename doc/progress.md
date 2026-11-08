@@ -4,6 +4,13 @@ What has been accomplished, newest first.
 
 ## 2026-11-08
 
+- Extended both sanitizer presets to Objective-C++, so the macOS pasteboard backend receives
+  the same instrumentation as C++. CI and the documented clang-tidy command now include `.mm`.
+- Fixed the newly exposed pasteboard lint findings by merging the text condition and checking
+  the nullable UTF-8 conversion before constructing a string.
+- clang-tidy 23.1.4 passes for all tracked C++ and Objective-C++ sources. All six test programs
+  pass under ASan/UBSan and TSan; the changed pasteboard source passes clang-format.
+
 - Replaced the root `.clang-format` with a new style and reformatted all C++ and Objective-C++ to
   it. The style uses a 2-space indent, 80 columns, no short blocks, functions, or loops on one line,
   and braces on their own line after functions and enums. The requested file also set
