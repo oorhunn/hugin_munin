@@ -52,9 +52,10 @@ enum
 typedef struct hm_clipboard hm_clipboard;
 typedef void (*hm_clipboard_callback)(void *context);
 
-// One remembered copy. `text` is a null-terminated UTF-8 preview of at most 255
-// bytes for text entries; `image` holds the TIFF bytes of image entries. Both
-// are owned by the snapshot they came from and are NULL when not applicable.
+// One remembered copy. `text` is a null-terminated UTF-8 preview of at most
+// 4095 bytes for text entries; `image` holds the TIFF bytes of image entries.
+// Both are owned by the snapshot they came from and are NULL when not
+// applicable.
 typedef struct {
   uint64_t id;
   int kind;
@@ -67,9 +68,17 @@ typedef struct {
 
 // Watches the system pasteboard and keeps the last `capacity` copies, 1 to 500.
 // Calls `callback` on a background thread when an external copy changes the
-// history. Returns NULL if the watcher cannot start.
+// history. With a `history_file` path, the history starts from that file and is
+// saved to it after each change; NULL keeps it in memory. Returns NULL if the
+// watcher cannot start.
 hm_clipboard *hm_clipboard_start(hm_clipboard_callback callback, void *context,
-                                 size_t capacity);
+                                 size_t capacity, const char *history_file);
+
+// Starts saving to `history_file`. NULL stops saving and deletes the file in
+// use. Returns false if the change could not be made, which leaves saving as it
+// was.
+bool hm_clipboard_set_history_file(hm_clipboard *clipboard,
+                                   const char *history_file);
 
 // Stops watching and frees `clipboard`. No callback runs after this returns.
 // Accepts NULL.
@@ -89,13 +98,39 @@ hm_clipboard_entry *hm_clipboard_snapshot(hm_clipboard *clipboard,
 // Frees a snapshot returned by hm_clipboard_snapshot. Accepts NULL.
 void hm_clipboard_free_snapshot(hm_clipboard_entry *entries, size_t count);
 
-// Writes the entry back to the pasteboard and moves it to the front of the
-// history, so the user pastes it with Cmd+V. Returns false for an unknown id or
-// a failed write. This does not call the callback.
+// Writes the entry back to the pasteboard and leaves the history order alone.
+// Returns false for an unknown id or a failed write. This does not call the
+// callback.
 bool hm_clipboard_restore(hm_clipboard *clipboard, uint64_t id);
 
-// Empties the history, leaving the pasteboard alone. This does not call the
-// callback.
+// The keyboard preview's position in the history, where 0 is the newest entry.
+// It persists between previews and returns to 0 when an external copy arrives.
+// Moves stop at both ends.
+typedef enum hm_clipboard_step
+{
+  HM_CLIPBOARD_STEP_OLDER,
+  HM_CLIPBOARD_STEP_NEWER,
+  HM_CLIPBOARD_STEP_OLDEST,
+  HM_CLIPBOARD_STEP_NEWEST,
+  HM_CLIPBOARD_STEP_TEN_OLDER,
+  HM_CLIPBOARD_STEP_TEN_NEWER
+} hm_clipboard_step;
+
+size_t hm_clipboard_stack_position(const hm_clipboard *clipboard);
+size_t hm_clipboard_stack_move(hm_clipboard *clipboard, hm_clipboard_step step);
+
+// Goes straight to `position`, or stays put when the history has no such entry.
+size_t hm_clipboard_stack_jump(hm_clipboard *clipboard, size_t position);
+
+// Writes the entry at the stack position to the pasteboard. Returns false when
+// there is none.
+bool hm_clipboard_stack_restore(hm_clipboard *clipboard);
+
+// Forgets the entry at the stack position, keeping the position valid.
+void hm_clipboard_stack_remove(hm_clipboard *clipboard);
+
+// Empties the history and deletes its file, leaving the pasteboard alone. This
+// does not call the callback.
 void hm_clipboard_clear(hm_clipboard *clipboard);
 
 #ifdef __cplusplus

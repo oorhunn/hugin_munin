@@ -33,6 +33,14 @@ void clipboard_round_trip()
   hm_clipboard_clear(nullptr);
   require(!hm_clipboard_restore(nullptr, 1),
           "Restore without a watcher fails safely");
+  require(!hm_clipboard_stack_restore(nullptr) &&
+              hm_clipboard_stack_position(nullptr) == 0 &&
+              hm_clipboard_stack_move(nullptr, HM_CLIPBOARD_STEP_OLDER) == 0 &&
+              hm_clipboard_stack_jump(nullptr, 1) == 0,
+          "The stack calls accept a missing watcher");
+  hm_clipboard_stack_remove(nullptr);
+  require(!hm_clipboard_set_history_file(nullptr, nullptr),
+          "Setting a history file without a watcher fails safely");
   size_t count = 7;
   require(hm_clipboard_snapshot(nullptr, &count) == nullptr && count == 0,
           "Snapshot without a watcher is empty");
@@ -41,7 +49,8 @@ void clipboard_round_trip()
     std::atomic<int> calls = 0;
   } watch;
   auto *clipboard = hm_clipboard_start(
-      [](void *context) { ++static_cast<Watch *>(context)->calls; }, &watch, 3);
+      [](void *context) { ++static_cast<Watch *>(context)->calls; }, &watch, 3,
+      nullptr);
   require(clipboard != nullptr, "The clipboard watcher starts");
 
   const auto wait_for_calls = [&watch](int wanted) {
@@ -85,16 +94,16 @@ void clipboard_round_trip()
           "The newest copy is first");
   hm_clipboard_free_snapshot(snapshot, entries);
 
-  // Restoring puts the older entry back on the pasteboard, for the user to
-  // paste with Cmd+V.
+  // Restoring puts the older entry back on the pasteboard without reordering
+  // the history.
   require(hm_clipboard_restore(clipboard, one_id), "Restore finds the entry");
   const auto back = hm::read_pasteboard();
   require(back && back->kind == hm::ClipboardContent::Kind::text &&
               back->text == one,
           "The restored entry is on the pasteboard again");
   snapshot = hm_clipboard_snapshot(clipboard, &entries);
-  require(snapshot != nullptr && snapshot[0].id == one_id,
-          "Restore moves the entry to the front");
+  require(snapshot != nullptr && snapshot[0].id != one_id,
+          "Restore leaves the history order alone");
   hm_clipboard_free_snapshot(snapshot, entries);
   const int before_stop = watch.calls.load();
   require(before_stop == seeded + 2, "A restore does not notify");

@@ -113,22 +113,29 @@ outside the app. Quit and reopen to confirm the session shelf clears.
 
 ### Clipboard keyboard preview checklist
 
-Copy multiple text entries and an image. Press Cmd+Shift+V with the pointer away from the notch;
-verify the preview stays open. Browse with left/right and confirm text/image previews and the
-position counter, including both ends of the history. Press Return, then Cmd+V in the original
-app; confirm the selected content is pasted. Reopen and press Escape; the clipboard should be
-unchanged. Verify clicking another app dismisses the preview, empty history is safe, and a new
-copy or capacity eviction while browsing leaves a valid selection. Verify a custom shortcut
-still works after relaunch and Reset selects Cmd+Shift+V. These interactive checks require a
-macOS desktop session and have not been performed automatically.
+These checks need a macOS desktop session, and they have not been run. Enable Accessibility with
+Settings → Automatic paste. A rebuilt ad hoc signed app may need the permission granted again.
 
-### Hold-to-paste preview verification
+Copy several text entries and an image. In an editor:
 
-This supersedes the release behavior in the earlier keyboard checklist. Enable Accessibility
-with Settings → Paste on release. In an editor, hold Cmd+Shift+V, release V while keeping the
-modifiers held, and browse with left/right. Release all modifiers: verify exactly one paste
-of the selected text/image and immediate dismissal. Check fast shortcut release, modifier
-release in both orders, Escape, empty history, and focus loss (no paste). Without Accessibility,
-verify selection is copied and the preview closes, with the permission hint visible beforehand.
-Check a custom shortcut with different modifiers and verify the 70% opaque background lets the
-underlying page remain visible. Automatic paste and these interactive checks are unverified.
+- Hold Cmd+Shift+V, keep the modifiers held, and tap V. Each tap should move one entry older, and
+  the counter should stop at the oldest entry.
+- Release all modifiers. The selection should paste exactly once, the preview should close, and
+  typing should go to the editor straight away.
+- Open the preview again. It should start on the entry just pasted, and the history order should
+  be unchanged. Copy something new and confirm the next preview starts at 1.
+- Try the arrows, J and K, Home, End, Page Up, Page Down, and the number keys, with 0 as the tenth
+  entry. Delete should forget the entry. Return should paste. Keypad Enter should copy without
+  pasting. Escape should change nothing.
+- Tap the shortcut quickly, release the modifiers in both orders, open with an empty history, and
+  switch apps while the preview is open, which should cancel without pasting.
+- The preview should appear in the middle of the screen, including over a full-screen app. Scroll
+  over it to move through the history, and double click it to paste.
+- Hover over the notch and confirm it shows metrics, Settings, Quit, and the file shelf, with no
+  clipboard content.
+- Quit and reopen the app. The history should come back in order. Clear History in Settings, and
+  turn off Keep history after quitting, should each delete
+  `~/Library/Application Support/HuginMunin/clipboard-history.bin`.
+- Copy a password from a password manager and confirm it is not recorded.
+- Turn off Accessibility and confirm that choosing an entry copies it and shows the hint.
+- Record a custom shortcut and repeat the first check with it.

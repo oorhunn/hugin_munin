@@ -7,6 +7,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -29,7 +30,7 @@ inline constexpr std::size_t clipboard_max_total_bytes =
 inline constexpr std::chrono::duration<double> clipboard_poll_interval{0.5};
 // At most this many bytes of an entry's text cross the bridge, cut at a UTF-8
 // boundary.
-inline constexpr std::size_t clipboard_preview_bytes = 255;
+inline constexpr std::size_t clipboard_preview_bytes = 4095;
 
 // One remembered copy. The history owns the payload; the bridge hands out
 // previews.
@@ -43,14 +44,30 @@ struct ClipboardEntry {
 // arrive as a size_t.
 std::size_t clamp_clipboard_capacity(std::size_t capacity);
 
+// A move through the history while browsing it from the keyboard.
+enum class ClipboardStep
+{
+  older,
+  newer,
+  oldest,
+  newest,
+  ten_older,
+  ten_newer
+};
+
+// Where `step` lands from `position` in a history of `count` entries. Position
+// 0 is the newest entry, and movement stops at both ends.
+std::size_t clipboard_stack_step(std::size_t position, std::size_t count,
+                                 ClipboardStep step);
+
 // A bounded, deduplicating history of clipboard content. The newest entry is
 // first.
 //
-// Deduplication: content that matches the newest entry is ignored, and content
-// that matches an older entry moves that entry to the front, so the history
-// holds each distinct payload once and in most-recently-used order. Memory is
-// bounded twice over: by the entry count and by total payload bytes, evicting
-// the oldest entries when a limit is exceeded.
+// Content that matches the newest entry is ignored. Content that matches an
+// older entry is a new entry, as in Flycut's default settings, so the history
+// is a plain record of what was copied. Memory is bounded twice over: by the
+// entry count and by total payload bytes, evicting the oldest entries when a
+// limit is exceeded.
 class ClipboardHistory {
 public:
   explicit ClipboardHistory(
@@ -63,16 +80,18 @@ public:
     return capacity_;
   }
 
-  // Records `content` captured at `now`. Returns the entry's id when the
-  // history changed (a new entry, or an existing one moved to the front), and
-  // empty when the content was a duplicate of the newest entry, empty, or
-  // larger than the byte budget.
+  // Records `content` captured at `now`. Returns the new entry's id, and empty
+  // when the content was a duplicate of the newest entry, empty, or larger than
+  // the byte budget.
   std::optional<std::uint64_t>
   capture(ClipboardContent content, std::chrono::system_clock::time_point now);
 
-  // Moves an existing entry to the front, as restoring it does. Returns false
-  // for an unknown id.
-  bool promote(std::uint64_t id, std::chrono::system_clock::time_point now);
+  // Replaces the history with `saved`, newest first, giving the entries fresh
+  // ids. Entries beyond the limits are dropped, oldest first.
+  void adopt(std::vector<ClipboardEntry> saved);
+
+  // Forgets one entry. Returns false for an unknown id.
+  bool remove(std::uint64_t id);
 
   [[nodiscard]] const std::vector<ClipboardEntry> &entries() const
   {
@@ -97,6 +116,17 @@ private:
   std::size_t total_bytes_ = 0;
   std::uint64_t next_id_ = 1;
 };
+
+// Writes `entries` to `file`, readable only by the owner, replacing it
+// atomically. The content is not encrypted.
+Collected<void>
+save_clipboard_history(const std::filesystem::path &file,
+                       const std::vector<ClipboardEntry> &entries);
+
+// Reads a file written by save_clipboard_history. A missing or damaged file is
+// an error.
+Collected<std::vector<ClipboardEntry>>
+load_clipboard_history(const std::filesystem::path &file);
 
 // The pasteboard as injectable functions, so tests can drive the logic with
 // fakes. Same idea as `Sources` in sampler.hpp.
@@ -137,18 +167,31 @@ private:
 // `clear`) do not notify, so the caller can refresh in its own way on its own
 // thread.
 //
-// `restore` writes an entry back to the pasteboard and moves it to the front.
-// The user pastes it with Cmd+V; sending the paste keystroke to other apps
-// would need Accessibility permission.
+// `restore` writes an entry back to the pasteboard and leaves the history order
+// alone. Sending the paste keystroke is the UI's job, because it is
+// platform-specific.
+//
+// The stack position is the entry the keyboard preview shows. It survives
+// between previews, so consecutive pastes can walk the history, and an external
+// copy resets it to the newest entry.
+//
+// With a history file, the watcher starts from what the file holds and saves
+// after each change on its own thread, and once more when it stops. `clear`
+// deletes the file straight away.
 class ClipboardWatcher {
 public:
   explicit ClipboardWatcher(
       std::function<void()> on_change,
       std::size_t capacity = clipboard_default_capacity,
       PasteboardSources sources = {},
-      std::chrono::duration<double> poll_interval = clipboard_poll_interval);
+      std::chrono::duration<double> poll_interval = clipboard_poll_interval,
+      const std::filesystem::path &history_file = {});
 
   void set_capacity(std::size_t capacity);
+
+  // Starts saving to `file`. An empty path stops saving and deletes the file in
+  // use.
+  void set_history_file(std::filesystem::path file);
 
   // Deep copy of the entries, newest first, safe against concurrent polls.
   std::vector<ClipboardEntry> snapshot() const;
@@ -156,12 +199,27 @@ public:
   bool restore(std::uint64_t id);
   void clear();
 
+  [[nodiscard]] std::size_t stack_position() const;
+  std::size_t stack_move(ClipboardStep step);
+  // Goes straight to `position`, or stays put when the history has no such
+  // entry.
+  std::size_t stack_jump(std::size_t position);
+  bool stack_restore();
+  void stack_remove();
+
 private:
   void poll_pass();
+  void keep_stack_position_in_bounds();
+  void save_if_dirty();
+  bool write_back(std::uint64_t id); // needs mutex_ held
 
   mutable std::mutex mutex_;
   ClipboardHistory history_;
   ClipboardTracker tracker_;
+  std::size_t stack_position_ = 0;
+  bool dirty_ = false;    // guarded by mutex_
+  std::mutex save_mutex_; // taken before mutex_, held across file access
+  std::filesystem::path history_file_; // guarded by save_mutex_
   std::function<void()> on_change_;
   std::chrono::duration<double> poll_interval_;
   PasteboardSources sources_;

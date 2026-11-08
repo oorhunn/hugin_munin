@@ -153,15 +153,18 @@ final class ClipboardPasteDelivery {
         // Nonactivating panels leave the destination app active. Never deliver into another app
         // if the user switched away while the preview was open.
         let pid = destination.processIdentifier
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+        // Flycut's delay and event route: some apps ignore a Cmd+V sent straight to their process.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
-                  let source = CGEventSource(stateID: .privateState),
+                  let source = CGEventSource(stateID: .combinedSessionState),
                   let down = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
                   let up = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false) else { return }
-            down.flags = .maskCommand
-            up.flags = .maskCommand
-            down.postToPid(pid)
-            up.postToPid(pid)
+            // The extra bit marks the left Command key, which some apps look for.
+            let command = CGEventFlags(rawValue: CGEventFlags.maskCommand.rawValue | 0x8)
+            down.flags = command
+            up.flags = command
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
         }
     }
 }
