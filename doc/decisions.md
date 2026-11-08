@@ -39,6 +39,7 @@
 | 2026-11-05 | Text is preferred when the pasteboard offers both text and an image, and images are stored and restored as TIFF, converted from PNG when that is all an app offered. | Text is what a copy usually means and pastes everywhere; TIFF is accepted by every macOS app and needs no re-encode on restore. Proposed during the build. |
 | 2026-11-05 | The clipboard history is shown in the expanded notch panel below the metrics, and that panel grew from 112 to 320 points. | The notch UI and Settings are the only surfaces; a clipboard window would be a third. Proposed during the build. |
 | 2026-11-05 | The capacity and the shortcut are saved in `UserDefaults` with the other preferences. | Follows the existing Settings pattern. Proposed during the build. |
+| 2026-11-06 | `.clang-tidy` enables the bug-finding and modernization check groups, turns off style-only checks, and fails CI on any warning. | Style checks gave most of the 812 findings in a first run. With only the useful checks left, a warning should stop a merge. Proposed during the setup, and the owner asked for it to run in CI. |
 
 | 2026-11-06 | The notch file shelf holds session-only path references, with AppKit file drags and C++ membership logic. | Originals stay in place until the destination handles a move/copy. Successful exports clear entries; cancelled drags retain them. No extra UI surface or storage copy is needed. |
 

@@ -18,7 +18,9 @@ struct ClipboardContent {
     std::string text;                // UTF-8, valid when kind is text
     std::vector<std::uint8_t> bytes; // TIFF, valid when kind is image
 
-    std::size_t size() const { return kind == Kind::text ? text.size() : bytes.size(); }
+    [[nodiscard]] std::size_t size() const {
+        return kind == Kind::text ? text.size() : bytes.size();
+    }
 
     // Same payload, byte for byte.
     bool operator==(const ClipboardContent &) const = default;

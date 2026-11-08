@@ -49,7 +49,7 @@ std::string preview(const std::string &text) {
         return text;
     std::size_t end = hm::clipboard_preview_bytes;
     // A continuation byte is 10xxxxxx; back up to the start of the character.
-    while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80)
+    while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0U) == 0x80U)
         --end;
     return text.substr(0, end);
 }

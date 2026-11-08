@@ -21,7 +21,7 @@ inline constexpr std::size_t clipboard_min_capacity = 1;
 inline constexpr std::size_t clipboard_max_capacity = 500;
 // Total bytes of payload the history may hold, whatever the capacity. Oldest entries are evicted
 // first; a single item larger than this is not recorded at all. Not a user setting.
-inline constexpr std::size_t clipboard_max_total_bytes = 64u * 1024 * 1024;
+inline constexpr std::size_t clipboard_max_total_bytes = std::size_t{64} * 1024 * 1024;
 // How often the watcher polls the pasteboard change counter.
 inline constexpr std::chrono::duration<double> clipboard_poll_interval{0.5};
 // At most this many bytes of an entry's text cross the bridge, cut at a UTF-8 boundary.
@@ -31,7 +31,7 @@ inline constexpr std::size_t clipboard_preview_bytes = 255;
 struct ClipboardEntry {
     std::uint64_t id = 0; // unique, never reused
     ClipboardContent content;
-    std::chrono::system_clock::time_point captured_at{};
+    std::chrono::system_clock::time_point captured_at;
 };
 
 // Limits a capacity chosen in Settings to a sane range. NaN-like input cannot arrive as a size_t.
@@ -49,7 +49,7 @@ class ClipboardHistory {
                               std::size_t max_total_bytes = clipboard_max_total_bytes);
 
     void set_capacity(std::size_t capacity);
-    std::size_t capacity() const { return capacity_; }
+    [[nodiscard]] std::size_t capacity() const { return capacity_; }
 
     // Records `content` captured at `now`. Returns the entry's id when the history changed (a new
     // entry, or an existing one moved to the front), and empty when the content was a duplicate
@@ -60,13 +60,13 @@ class ClipboardHistory {
     // Moves an existing entry to the front, as restoring it does. Returns false for an unknown id.
     bool promote(std::uint64_t id, std::chrono::system_clock::time_point now);
 
-    const std::vector<ClipboardEntry> &entries() const { return entries_; }
-    const ClipboardEntry *find(std::uint64_t id) const;
-    std::optional<ClipboardContent> content(std::uint64_t id) const;
+    [[nodiscard]] const std::vector<ClipboardEntry> &entries() const { return entries_; }
+    [[nodiscard]] const ClipboardEntry *find(std::uint64_t id) const;
+    [[nodiscard]] std::optional<ClipboardContent> content(std::uint64_t id) const;
 
     void clear();
 
-    std::size_t total_bytes() const { return total_bytes_; }
+    [[nodiscard]] std::size_t total_bytes() const { return total_bytes_; }
 
   private:
     void evict_while_over_limits();
@@ -116,10 +116,10 @@ class ClipboardTracker {
 // with Cmd+V; sending the paste keystroke to other apps would need Accessibility permission.
 class ClipboardWatcher {
   public:
-    ClipboardWatcher(std::function<void()> on_change,
-                     std::size_t capacity = clipboard_default_capacity,
-                     PasteboardSources sources = {},
-                     std::chrono::duration<double> poll_interval = clipboard_poll_interval);
+    explicit ClipboardWatcher(
+        std::function<void()> on_change, std::size_t capacity = clipboard_default_capacity,
+        PasteboardSources sources = {},
+        std::chrono::duration<double> poll_interval = clipboard_poll_interval);
 
     void set_capacity(std::size_t capacity);
 

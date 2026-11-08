@@ -35,17 +35,17 @@ struct FakePasteboard {
 
     hm::PasteboardSources sources() {
         return {[this] {
-                    const std::lock_guard lock(mutex);
+                    const std::scoped_lock lock(mutex);
                     return count;
                 },
                 [this]() -> hm::Collected<hm::ClipboardContent> {
-                    const std::lock_guard lock(mutex);
+                    const std::scoped_lock lock(mutex);
                     if (fail_read || current.size() == 0)
                         return std::unexpected("nothing on the pasteboard");
                     return current;
                 },
                 [this](const hm::ClipboardContent &content) -> hm::Collected<void> {
-                    const std::lock_guard lock(mutex);
+                    const std::scoped_lock lock(mutex);
                     writes.push_back(content);
                     ++count;
                     return {};
@@ -54,13 +54,13 @@ struct FakePasteboard {
 
     /// Simulates a copy: new contents at a new change count.
     void copy(std::uint64_t new_count, hm::ClipboardContent content) {
-        const std::lock_guard lock(mutex);
+        const std::scoped_lock lock(mutex);
         count = new_count;
         current = std::move(content);
     }
 
     std::vector<hm::ClipboardContent> written() {
-        const std::lock_guard lock(mutex);
+        const std::scoped_lock lock(mutex);
         return writes;
     }
 };

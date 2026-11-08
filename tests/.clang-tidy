@@ -1,0 +1,7 @@
+# Tests check values with `require`, which ends the program on failure. clang-tidy cannot see that,
+# a test that throws should crash, and only the failing thread reaches `std::exit`.
+InheritParentConfig: true
+Checks: >
+  -bugprone-exception-escape,
+  -bugprone-unchecked-optional-access,
+  -concurrency-mt-unsafe

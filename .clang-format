@@ -1,3 +1,4 @@
 BasedOnStyle: LLVM
+Standard: Latest
 IndentWidth: 4
 ColumnLimit: 100

@@ -60,8 +60,8 @@ std::chrono::duration<double> clamp_sample_interval(std::chrono::duration<double
 // be destroyed from inside `callback`.
 class Sampler {
   public:
-    Sampler(std::function<void(const Sample &)> callback, Sources sources = {},
-            Intervals intervals = {});
+    explicit Sampler(std::function<void(const Sample &)> callback, Sources sources = {},
+                     Intervals intervals = {});
 
     // Takes effect immediately, with one extra sample rather than a wait for the old interval.
     void set_interval(std::chrono::duration<double> interval);

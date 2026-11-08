@@ -93,7 +93,7 @@ bool ClipboardTracker::poll() {
     // new. It can also be a poll that landed inside another process's write, between the clear
     // and the new contents, when the count has already moved: read this count once more on the
     // next poll before treating it as settled.
-    const auto content = sources_.read();
+    auto content = sources_.read();
     if (!content || content->size() == 0) {
         if (retry_ == count) {
             retry_.reset();
@@ -118,7 +118,7 @@ ClipboardWatcher::ClipboardWatcher(std::function<void()> on_change, std::size_t 
                                    std::chrono::duration<double> poll_interval)
     : history_(capacity), tracker_(history_, sources), on_change_(std::move(on_change)),
       poll_interval_(poll_interval), sources_(std::move(sources)),
-      worker_([this](std::stop_token stop) {
+      worker_([this](const std::stop_token &stop) {
           while (!stop.stop_requested()) {
               poll_pass();
               std::unique_lock lock(wake_mutex_);
@@ -129,7 +129,7 @@ ClipboardWatcher::ClipboardWatcher(std::function<void()> on_change, std::size_t 
 void ClipboardWatcher::poll_pass() {
     bool changed = false;
     {
-        const std::lock_guard lock(mutex_);
+        const std::scoped_lock lock(mutex_);
         changed = tracker_.poll();
     }
     if (changed && on_change_)
@@ -137,17 +137,17 @@ void ClipboardWatcher::poll_pass() {
 }
 
 void ClipboardWatcher::set_capacity(std::size_t capacity) {
-    const std::lock_guard lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     history_.set_capacity(capacity);
 }
 
 std::vector<ClipboardEntry> ClipboardWatcher::snapshot() const {
-    const std::lock_guard lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     return history_.entries();
 }
 
 bool ClipboardWatcher::restore(std::uint64_t id) {
-    const std::lock_guard lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     auto content = history_.content(id);
     if (!content)
         return false;
@@ -161,7 +161,7 @@ bool ClipboardWatcher::restore(std::uint64_t id) {
 }
 
 void ClipboardWatcher::clear() {
-    const std::lock_guard lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     history_.clear();
 }
 
