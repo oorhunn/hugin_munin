@@ -14,7 +14,7 @@ struct ClipboardItem: Identifiable {
 
 /// Runs on the core's watcher thread, so it must stay outside the main actor. A closure written
 /// inside `ClipboardStore` would inherit that isolation and trap when the core calls it.
-private func receiveClipboardChange(_ context: UnsafeMutableRawPointer?) {
+func receiveClipboardChange(_ context: UnsafeMutableRawPointer?) {
     guard let context else { return }
     let store = Unmanaged<ClipboardStore>.fromOpaque(context).takeUnretainedValue()
     Task { @MainActor in store.reload() }

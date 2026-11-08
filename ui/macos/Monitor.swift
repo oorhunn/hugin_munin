@@ -64,7 +64,7 @@ struct SystemState: Sendable {
 
 /// Runs on the core's sampling thread, so it must stay outside the main actor. A closure written
 /// inside `Monitor` would inherit that isolation and trap when the core calls it.
-private func receiveSample(_ sample: UnsafePointer<hm_sample>?, _ context: UnsafeMutableRawPointer?) {
+func receiveSample(_ sample: UnsafePointer<hm_sample>?, _ context: UnsafeMutableRawPointer?) {
     guard let sample, let context else { return }
     let state = SystemState(sample.pointee)
     let monitor = Unmanaged<Monitor>.fromOpaque(context).takeUnretainedValue()

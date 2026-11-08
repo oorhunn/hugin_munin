@@ -4,6 +4,14 @@ What has been accomplished, newest first.
 
 ## 2026-11-08
 
+- Added a CMake/CTest Swift behavior target for shortcut recording, clipboard preview input,
+  commit/copy/cancel behavior, isolated settings persistence and callbacks, and worker-thread
+  callback copying and receiver lifetimes. The panel uses the same extracted preview session.
+  Fixed recording Cmd+A (Carbon key code zero) and safe fallback for corrupt saved key codes.
+  `git diff --check` passes. Build, CTest, and launch smoke validation remain unverified: the
+  resource coordinator reported constrained memory and never granted the queued build; the
+  request was cancelled without starting it.
+
 - Ported the MCP resource coordination utilities onto current `main`, preserving clipboard
   history, its separate preview, and the file shelf. Jobs appear above the shelf in the hover panel.
   The combined build, all eight tests, formatting, clang-tidy on changed C++ sources, and the
