@@ -6,7 +6,7 @@ import SwiftUI
 struct NotchGeometry: Equatable {
     static let metricWidth: CGFloat = 62
     static let wingPadding: CGFloat = 14
-    static let expandedSize = CGSize(width: 640, height: 238)
+    static let expandedSize = CGSize(width: 640, height: 446)
 
     let screenFrame: NSRect
     let notchWidth: CGFloat // 0 on screens without a notch
@@ -226,7 +226,10 @@ struct NotchView: View {
                     wings.frame(height: geometry.height)
                     if state.expanded {
                         VStack(spacing: 10) {
-                            NotchPanel(system: monitor.state, openSettings: openSettings)
+                            // An explicit closure avoids Swift 6.3's IR-generation crash when
+                            // adapting the isolated bound method to a Boolean callback.
+                            NotchPanel(system: monitor.state, openSettings: openSettings,
+                                       setPaused: { monitor.setAdmissionsPaused($0) })
                             FileShelfView(state: state)
                         }
                             .padding(.horizontal, 20)
@@ -286,6 +289,7 @@ private struct WingLabel: View {
 private struct NotchPanel: View {
     let system: SystemState
     let openSettings: () -> Void
+    let setPaused: (Bool) -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -300,9 +304,48 @@ private struct NotchPanel: View {
                 Stat(title: "GPU", percent: system.gpuPercent,
                      detail: system.gpuCoreCount == 0 ? "–" : "\(system.gpuCoreCount) cores")
             }
-            Spacer(minLength: 0)
+            Divider().overlay(.white.opacity(0.15))
+            HStack {
+                Text("Jobs").font(.caption.weight(.semibold))
+                Spacer()
+                Text("\(system.registeredAgents) agents · \(system.pressure)")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if system.jobs.isEmpty {
+                Text("No registered jobs")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(system.jobs) { job in
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(job.title).font(.caption.weight(.medium)).lineLimit(1)
+                                    Text("\(job.agent_name) · \(job.project)")
+                                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 3) {
+                                    Text(job.state.capitalized).font(.caption2)
+                                        .foregroundStyle(job.state == "unresponsive" ? .orange : .secondary)
+                                    Text(estimate(job)).font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                            .help(job.title + " — " + job.project)
+                        }
+                    }
+                }
+            }
+            HStack {
+                Text("Estimates supplied by apps").font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+            }
             HStack {
                 Button("Settings", action: openSettings)
+                Button(system.admissionsPaused ? "Resume jobs" : "Pause new jobs") {
+                    setPaused(!system.admissionsPaused)
+                }
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }
@@ -310,6 +353,16 @@ private struct NotchPanel: View {
             .font(.caption)
         }
         .padding(.top, 8)
+    }
+
+    private func estimate(_ job: RegisteredJob) -> String {
+        if job.state == "unresponsive" { return "Heartbeat overdue" }
+        if job.overdue { return "Estimate exceeded" }
+        let seconds = job.state == "queued" ? job.estimated_duration_seconds : job.remaining_seconds
+        guard let seconds else { return "No estimate" }
+        let minutes = max(1, Int(ceil(seconds / 60)))
+        let duration = minutes < 60 ? "~\(minutes)m" : "~\(minutes / 60)h \(minutes % 60)m"
+        return job.state == "queued" ? "\(duration) duration · waiting" : "\(duration) left"
     }
 }
 

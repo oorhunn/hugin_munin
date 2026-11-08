@@ -15,9 +15,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_library(hm_core
   core/src/metrics.cpp
   core/src/sampler.cpp
+  core/src/coordinator.cpp
+  core/src/platform/macos/coordinator_ipc.cpp
   core/src/platform/macos/collectors.cpp
 )
-target_include_directories(hm_core PUBLIC core/include)
+target_include_directories(hm_core PUBLIC core/include third_party)
 target_link_libraries(hm_core PUBLIC "-framework CoreFoundation" "-framework IOKit")
 target_compile_options(hm_core PRIVATE -Wall -Wextra -Wpedantic)
 
@@ -25,6 +27,13 @@ add_library(hm_bridge core/bridge/bridge.cpp)
 target_include_directories(hm_bridge PUBLIC core/bridge/include)
 target_link_libraries(hm_bridge PUBLIC hm_core)
 target_compile_options(hm_bridge PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(hm-service utilities/service.cpp)
+target_link_libraries(hm-service PRIVATE hm_core)
+add_executable(hm-run utilities/run.cpp)
+target_link_libraries(hm-run PRIVATE hm_core)
+add_executable(hm-mcp utilities/mcp.cpp)
+target_link_libraries(hm-mcp PRIVATE hm_core)
 
 # The macOS UI. CMake only supports Swift with the Ninja and Xcode generators.
 # Without an explicit target, swiftc ignores the deployment target and builds for the host's macOS.
@@ -45,16 +54,25 @@ set_target_properties(HuginMunin PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/ui/macos/Info.plist.in
 )
 target_link_libraries(HuginMunin PRIVATE hm_bridge)
+add_dependencies(HuginMunin hm-service hm-mcp hm-run)
 # swiftc writes dependency files next to the executable, named by build type, and codesign rejects
 # stray files in a bundle.
 add_custom_command(TARGET HuginMunin POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E rm -f $<TARGET_FILE:HuginMunin>.d $<TARGET_FILE:HuginMunin>.emit-module.d
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:hm-service> $<TARGET_FILE:hm-mcp> $<TARGET_FILE:hm-run> $<TARGET_FILE_DIR:HuginMunin>
+  COMMAND codesign --force --sign - $<TARGET_FILE_DIR:HuginMunin>/hm-run
+  COMMAND codesign --force --sign - $<TARGET_FILE_DIR:HuginMunin>/hm-service
+  COMMAND codesign --force --sign - $<TARGET_FILE_DIR:HuginMunin>/hm-mcp
   COMMAND codesign --force --sign - $<TARGET_BUNDLE_DIR:HuginMunin>
 )
 
 include(CTest)
 if(BUILD_TESTING)
-  foreach(test metrics_test collectors_test sampler_test bridge_test file_shelf_test)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(NAME mcp_integration COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/mcp_integration.py $<TARGET_FILE:hm-mcp>)
+  set_tests_properties(mcp_integration PROPERTIES TIMEOUT 30)
+  add_dependencies(hm_bridge hm-service)
+  foreach(test metrics_test collectors_test sampler_test bridge_test file_shelf_test coordinator_test)
     add_executable(${test} tests/${test}.cpp)
     target_link_libraries(${test} PRIVATE hm_bridge)
     target_compile_options(${test} PRIVATE -Wall -Wextra -Wpedantic)
@@ -63,5 +81,5 @@ if(BUILD_TESTING)
   endforeach()
   # The sanitizer presets build this rather than `all`, because the Swift app does not link against
   # sanitized C++ objects.
-  add_custom_target(hm_tests DEPENDS ${hm_test_targets})
+  add_custom_target(hm_tests DEPENDS ${hm_test_targets} hm-mcp hm-run)
 endif()

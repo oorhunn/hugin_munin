@@ -38,6 +38,11 @@ struct Fake {
                     if (fail)
                         return std::unexpected("gpu");
                     return std::vector<hm::Gpu>{{60.0, 19}};
+                },
+                [this]() -> hm::Collected<hm::MemoryPressure> {
+                    if (fail)
+                        return std::unexpected("pressure");
+                    return hm::MemoryPressure::normal;
                 }};
     }
 };
@@ -67,6 +72,8 @@ int main() {
     fake.fail = true;
     const auto failed = tracker.update(start + 120s);
     require(fake.disk_reads == 3, "Failed disk read was attempted");
+    require(!failed.memory_fresh && !failed.disk_fresh && !failed.memory_pressure,
+            "Retained values explicitly marked stale; pressure failure is unknown");
     require(!failed.cpu_percent, "A failed CPU read is unknown, not stale");
     require(!failed.gpu_percent, "A failed GPU read is unknown, not stale");
     require(failed.memory && failed.memory->used == 40,

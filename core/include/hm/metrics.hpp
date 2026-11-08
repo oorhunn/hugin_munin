@@ -19,6 +19,8 @@ struct CoreUsage {
     double busy, user, system, nice, idle;
 };
 
+enum class MemoryPressure { normal, warning, critical };
+
 // System-wide memory in bytes. On macOS, used = app + wired + compressed, as in Activity Monitor.
 struct Memory {
     std::uint64_t total = 0, used = 0, app = 0, wired = 0, compressed = 0, cached = 0;

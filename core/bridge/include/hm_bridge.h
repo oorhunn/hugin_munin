@@ -23,6 +23,8 @@ typedef struct {
     double cpu_percent, memory_percent, disk_percent, gpu_percent;
     uint64_t memory_used, memory_total, disk_free;
     size_t core_count, gpu_core_count;
+    // UTF-8 snapshot of registered jobs and capacity, valid only for the callback duration.
+    const char *coordination_json;
 } hm_sample;
 
 typedef struct hm_sampler hm_sampler;
@@ -37,6 +39,8 @@ void hm_sampler_set_interval(hm_sampler *sampler, double interval_seconds);
 
 // Stops sampling and frees `sampler`. No callback runs after this returns. Accepts NULL.
 void hm_sampler_stop(hm_sampler *sampler);
+// May block on local IPC. Call off the main thread. Returns 1 on success, 0 on failure.
+int hm_admissions_set_paused(int paused);
 
 #ifdef __cplusplus
 }

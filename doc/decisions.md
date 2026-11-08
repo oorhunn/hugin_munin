@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-11-06 | Add MCP coordination and command utilities to the app, with one shared per-user authority and app-supplied job estimates in the notch hover panel. | Owner accepted the resource coordination plan and requested job visibility. The first implementation uses conservative advisory reservations. |
 | 2026-11-05 | C++23 is the main language. | Set by the project owner. |
 | 2026-11-05 | macOS is the first target and Ubuntu follows. | Set by the project owner. Platform code stays isolated so that Ubuntu can be added later. |
 | 2026-11-05 | The only UI surfaces are the notch UI and the settings menu UI. | Set by the project owner. |
