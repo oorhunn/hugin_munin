@@ -6,7 +6,10 @@ import SwiftUI
 struct NotchGeometry: Equatable {
     static let metricWidth: CGFloat = 62
     static let wingPadding: CGFloat = 14
-    static let expandedSize = CGSize(width: 640, height: 238)
+    static let expandedWidth: CGFloat = 640
+    static let expandedHeightWithShelf: CGFloat = 446
+    /// Drops the shelf and the gap above it, so the jobs list keeps its height.
+    static let expandedHeightWithoutShelf: CGFloat = 319
 
     let screenFrame: NSRect
     let notchWidth: CGFloat // 0 on screens without a notch
@@ -39,6 +42,12 @@ struct NotchGeometry: Equatable {
     /// Both wings match the wider one, so the panel stays centred on the notch.
     func collapsedSize(wingMetrics: Int) -> CGSize {
         CGSize(width: notchWidth + 2 * Self.wingWidth(metrics: wingMetrics), height: height)
+    }
+
+    /// Full expanded size including the notch or menu bar strip.
+    func expandedSize(showingShelf: Bool) -> CGSize {
+        CGSize(width: Self.expandedWidth,
+               height: (showingShelf ? Self.expandedHeightWithShelf : Self.expandedHeightWithoutShelf) + height)
     }
 
     /// Rectangle of the given size hanging from the top centre of the screen.
@@ -87,6 +96,8 @@ final class NotchController {
         catcher.wantsLayer = true
         catcher.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
         trigger.contentView = catcher
+
+        state.shelf.onChange = { [weak self] in self?.layout() }
 
         let hosting = ShelfDropHosting(rootView: AnyView(NotchView(monitor: monitor, settings: settings,
                                                         state: state, openSettings: openSettings)))
@@ -138,9 +149,9 @@ final class NotchController {
 
     func layout() {
         state.geometry = NotchGeometry(screen: Self.preferredScreen())
-        // The window always has the expanded size; the transparent part ignores clicks while collapsed.
-        let size = CGSize(width: NotchGeometry.expandedSize.width,
-                          height: NotchGeometry.expandedSize.height + state.geometry.height)
+        // The window keeps its expanded size while collapsed, when the transparent part ignores
+        // clicks. It follows the shelf so an empty shelf leaves no invisible area catching the pointer.
+        let size = state.geometry.expandedSize(showingShelf: !state.shelf.urls.isEmpty)
         panel.setFrame(state.geometry.rect(size), display: true)
         let collapsed = state.geometry.collapsedSize(wingMetrics: settings.leftMetrics.count)
         trigger.setFrame(state.geometry.rect(collapsed), display: false)
@@ -214,8 +225,7 @@ struct NotchView: View {
     var body: some View {
         let geometry = state.geometry
         let size = state.expanded
-            ? CGSize(width: NotchGeometry.expandedSize.width,
-                     height: NotchGeometry.expandedSize.height + geometry.height)
+            ? geometry.expandedSize(showingShelf: !state.shelf.urls.isEmpty)
             : geometry.collapsedSize(wingMetrics: settings.leftMetrics.count)
         let radius: CGFloat = state.expanded ? 24 : 10
         VStack(spacing: 0) {
@@ -226,8 +236,13 @@ struct NotchView: View {
                     wings.frame(height: geometry.height)
                     if state.expanded {
                         VStack(spacing: 10) {
-                            NotchPanel(system: monitor.state, openSettings: openSettings)
-                            FileShelfView(state: state)
+                            // An explicit closure avoids Swift 6.3's IR-generation crash when
+                            // adapting the isolated bound method to a Boolean callback.
+                            NotchPanel(system: monitor.state, openSettings: openSettings,
+                                       setPaused: { monitor.setAdmissionsPaused($0) })
+                            if !state.shelf.urls.isEmpty {
+                                FileShelfView(state: state)
+                            }
                         }
                             .padding(.horizontal, 20)
                             .padding(.bottom, 12)
@@ -286,6 +301,7 @@ private struct WingLabel: View {
 private struct NotchPanel: View {
     let system: SystemState
     let openSettings: () -> Void
+    let setPaused: (Bool) -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -300,8 +316,48 @@ private struct NotchPanel: View {
                 Stat(title: "GPU", percent: system.gpuPercent,
                      detail: system.gpuCoreCount == 0 ? "–" : "\(system.gpuCoreCount) cores")
             }
+            Divider().overlay(.white.opacity(0.15))
+            HStack {
+                Text("Jobs").font(.caption.weight(.semibold))
+                Spacer()
+                Text("\(system.registeredAgents) agents · \(system.pressure)")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if system.jobs.isEmpty {
+                Text("No registered jobs")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(system.jobs) { job in
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(job.title).font(.caption.weight(.medium)).lineLimit(1)
+                                    Text("\(job.agent_name) · \(job.project)")
+                                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 3) {
+                                    Text(job.state.capitalized).font(.caption2)
+                                        .foregroundStyle(job.state == "unresponsive" ? .orange : .secondary)
+                                    Text(estimate(job)).font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                            .help(job.title + " — " + job.project)
+                        }
+                    }
+                }
+            }
+            HStack {
+                Text("Estimates supplied by apps").font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+            }
             HStack {
                 Button("Settings", action: openSettings)
+                Button(system.admissionsPaused ? "Resume jobs" : "Pause new jobs") {
+                    setPaused(!system.admissionsPaused)
+                }
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }
@@ -309,6 +365,16 @@ private struct NotchPanel: View {
             .font(.caption)
         }
         .padding(.top, 8)
+    }
+
+    private func estimate(_ job: RegisteredJob) -> String {
+        if job.state == "unresponsive" { return "Heartbeat overdue" }
+        if job.overdue { return "Estimate exceeded" }
+        let seconds = job.state == "queued" ? job.estimated_duration_seconds : job.remaining_seconds
+        guard let seconds else { return "No estimate" }
+        let minutes = max(1, Int(ceil(seconds / 60)))
+        let duration = minutes < 60 ? "~\(minutes)m" : "~\(minutes / 60)h \(minutes % 60)m"
+        return job.state == "queued" ? "\(duration) duration · waiting" : "\(duration) left"
     }
 }
 

@@ -9,6 +9,7 @@
 | 2026-11-08 | The clipboard follows Flycut's default behavior. Repeating the shortcut walks the history, the stack position persists until a new copy, pasting does not reorder, a repeat of an older entry is a new entry, Return and row clicks paste, and Flycut's default private pasteboard types are skipped. This replaces the earlier move-to-front, return-to-copy, and start-at-newest behavior. Scope is the default settings only. | Requested by the owner. Behavior was taken from Flycut's published source, because macOS denied reading the owner's own Flycut preferences. The preview stays in the notch at Flycut's bezel size, because the notch and Settings remain the only UI surfaces. |
 | 2026-11-08 | Releasing all shortcut modifiers commits the preview and pastes to the original app, subject to Accessibility permission. The preview background is 70% opaque. | Requested by the user. Permission is requested explicitly in Settings; missing permission falls back to copying. The previous manual-paste-only keyboard behavior is superseded; Escape still cancels. |
 | 2026-11-08 | Cmd+Shift+V opens a focused clipboard preview in the notch; left/right browse, Return restores, Escape dismisses. This replaces the former Cmd+Shift+C default; custom shortcuts are retained. | Requested before merging the clipboard feature. A key-capable nonactivating panel receives arrows without global keyboard monitoring or Accessibility access. |
+| 2026-11-06 | Add MCP coordination and command utilities to the app, with one shared per-user authority and app-supplied job estimates in the notch hover panel. | Owner accepted the resource coordination plan and requested job visibility. The first implementation uses conservative advisory reservations. |
 | 2026-11-05 | C++23 is the main language. | Set by the project owner. |
 | 2026-11-05 | macOS is the first target and Ubuntu follows. | Set by the project owner. Platform code stays isolated so that Ubuntu can be added later. |
 | 2026-11-05 | The only UI surfaces are the notch UI and the settings menu UI. | Set by the project owner. |
@@ -45,6 +46,7 @@
 | 2026-11-06 | `.clang-tidy` enables the bug-finding and modernization check groups, turns off style-only checks, and fails CI on any warning. | Style checks gave most of the 812 findings in a first run. With only the useful checks left, a warning should stop a merge. Proposed during the setup, and the owner asked for it to run in CI. |
 
 | 2026-11-06 | The notch file shelf holds session-only path references, with AppKit file drags and C++ membership logic. | Originals stay in place until the destination handles a move/copy. Successful exports clear entries; cancelled drags retain them. No extra UI surface or storage copy is needed. |
+| 2026-11-09 | The file shelf is hidden while empty, and the expanded panel shrinks with it. | An empty shelf only took up space. Dropping on the notch still adds the first item, at the cost of no longer showing a hint about it. |
 
 ## Open questions
 

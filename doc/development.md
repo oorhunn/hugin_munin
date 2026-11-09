@@ -4,6 +4,7 @@
 
 - macOS 14 or later to run the app
 - CMake 3.29 or later, Ninja, a C++23 compiler, and Swift 6
+- Python 3 for the MCP integration test
 - `clang-format` and `clang-tidy` to check C++, from `brew install clang-format llvm`
 
 The Xcode command line tools are enough. The full Xcode app is not needed.
@@ -23,6 +24,8 @@ To quit the app, hover over the notch and click **Quit**.
 
 | Test | Needs a live system | Covers |
 | --- | --- | --- |
+| `coordinator_test` | No | Reservations, expiry, ownership, estimates, and pressure |
+| `mcp_integration` | Yes | Two independent MCP adapters sharing one service |
 | `metrics_test` | No | Metric calculations |
 | `sampler_test` | No | Sampling logic with fake sources |
 | `collectors_test` | Yes | The platform backend |
@@ -105,13 +108,14 @@ vtool -show-build build/HuginMunin.app/Contents/MacOS/HuginMunin
 
 ## Manual shelf checks
 
-On a Mac, drag a disposable document and folder from Finder onto the collapsed notch, then
-check both entries in the expanded shelf. Drag each to a Finder destination and verify the
+On a Mac, hover the notch with an empty shelf and confirm the panel is short with no shelf.
+Drag a disposable document and folder from Finder onto the collapsed notch, then
+check both entries in the expanded shelf at full height. Drag each to a Finder destination and verify the
 destination and original according to Finder's chosen copy/move operation. Repeat with Option
 held for a copy. Cancel a drag with Escape and confirm its entry remains. Release an item over the panel and
 confirm it also remains. To diagnose a drag that fails, run
 `log show --last 10m --predicate 'subsystem == "HuginMunin"'`. Use × and confirm
-the original still exists. Try duplicate drops, enough entries to scroll, and an item renamed
+the original still exists. Remove the last entry and confirm the panel shrinks again. Try duplicate drops, enough entries to scroll, and an item renamed
 outside the app. Quit and reopen to confirm the session shelf clears.
 
 ### Clipboard keyboard preview checklist
@@ -134,7 +138,7 @@ Copy several text entries and an image. In an editor:
   switch apps while the preview is open, which should cancel without pasting.
 - The preview should appear in the middle of the screen, including over a full-screen app. Scroll
   over it to move through the history, and double click it to paste.
-- Hover over the notch and confirm it shows metrics, Settings, Quit, and the file shelf, with no
+- Hover over the notch and confirm it shows metrics, Settings, Quit, and the file shelf when it holds items, with no
   clipboard content.
 - Quit and reopen the app. The history should come back in order. Clear History in Settings, and
   turn off Keep history after quitting, should each delete
