@@ -90,6 +90,9 @@ expanded notch. AppKit drop receivers on both the collapsed trigger and expanded
 file URLs, including folders. Dragging over the collapsed trigger opens the panel. The drag
 source offers copy and move to other applications; the destination chooses the operation using
 normal macOS rules. A completed copy or move removes the reference, while cancellation retains it.
+The drop receivers ignore drags that start inside the app, so releasing a shelf item over the
+panel leaves it on the shelf. Refused drags and each drag's final operation are written to the
+unified log under subsystem `HuginMunin`, category `FileShelf`.
 The panel stays expanded during an outgoing drag. Entries can also be removed without deleting
 anything. Paths are not persisted or tracked after an external rename/move; an unavailable item
 cannot be dragged and can be dismissed with its × button.

@@ -108,7 +108,9 @@ vtool -show-build build/HuginMunin.app/Contents/MacOS/HuginMunin
 On a Mac, drag a disposable document and folder from Finder onto the collapsed notch, then
 check both entries in the expanded shelf. Drag each to a Finder destination and verify the
 destination and original according to Finder's chosen copy/move operation. Repeat with Option
-held for a copy. Cancel a drag with Escape and confirm its entry remains. Use × and confirm
+held for a copy. Cancel a drag with Escape and confirm its entry remains. Release an item over the panel and
+confirm it also remains. To diagnose a drag that fails, run
+`log show --last 10m --predicate 'subsystem == "HuginMunin"'`. Use × and confirm
 the original still exists. Try duplicate drops, enough entries to scroll, and an item renamed
 outside the app. Quit and reopen to confirm the session shelf clears.
 
