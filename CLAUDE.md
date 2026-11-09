@@ -26,8 +26,9 @@ ctest --test-dir build --output-on-failure
 open build/HuginMunin.app
 ```
 
-The tests cover the core and the C bridge, not the Swift UI. After changing `ui/macos/` or the
-bridge, launch the app and confirm it stays running, because a Swift concurrency error can pass
+The tests cover the core, C bridge, and Swift behavior (shortcut recording, clipboard preview,
+settings, and callback lifetimes). Real window focus and paste delivery still need manual checks.
+After changing `ui/macos/` or the bridge, launch the app and confirm it stays running, because a Swift concurrency error can pass
 every test and still crash the app on launch. `scripts/smoke_test.sh` does this check, and CI runs
 it too. CI has no notch, so notch behavior still needs a run on a real MacBook.
 

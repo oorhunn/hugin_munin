@@ -43,16 +43,15 @@ private final class BezelPanel: NSPanel {
 final class ClipboardBezelController {
     private static let size = CGSize(width: 500, height: 320)
 
-    private let store: ClipboardStore
-    private let settings: Settings
     private let panel: BezelPanel
-    private let pasteDelivery = ClipboardPasteDelivery()
+    private let pasteDelivery: ClipboardPasteDelivery
     private var releaseTimer: Timer?
-    private var isOpen = false
+    private let session: ClipboardPreviewSession
 
     init(store: ClipboardStore, settings: Settings) {
-        self.store = store
-        self.settings = settings
+        let delivery = ClipboardPasteDelivery()
+        pasteDelivery = delivery
+        session = ClipboardPreviewSession(store: store, settings: settings, paste: { delivery.paste() })
         panel = BezelPanel(contentRect: NSRect(origin: .zero, size: Self.size),
                            styleMask: [.borderless, .nonactivatingPanel],
                            backing: .buffered, defer: false)
@@ -66,23 +65,19 @@ final class ClipboardBezelController {
         hosting.sizingOptions = []
         panel.contentView = hosting
 
-        panel.onKey = { [weak self] event in self?.handleKey(event) }
-        panel.onScroll = { [weak self] delta in self?.handleScroll(delta) }
-        panel.onDoubleClick = { [weak self] in self?.commit() }
-        panel.onModifiersReleased = { [weak self] in self?.commit() }
-        panel.onDismiss = { [weak self] in self?.close() }
+        session.onClose = { [weak self] in self?.closePanel() }
+        panel.onKey = { [weak self] event in self?.session.handleKey(event) }
+        panel.onScroll = { [weak self] delta in self?.session.handleScroll(delta) }
+        panel.onDoubleClick = { [weak self] in self?.session.commit() }
+        panel.onModifiersReleased = { [weak self] in self?.session.commit() }
+        panel.onDismiss = { [weak self] in self?.session.cancel() }
     }
 
     /// Opens the preview, or steps to the next older entry if it is already open, so holding the
     /// modifiers and tapping the key walks the history as in Flycut.
     func open() {
-        guard !isOpen else {
-            store.move(HM_CLIPBOARD_STEP_OLDER)
-            return
-        }
-        isOpen = true
+        guard session.open() else { return }
         pasteDelivery.rememberDestination()
-        store.reload()
         if let screen = NSScreen.main ?? NSScreen.screens.first {
             let area = screen.visibleFrame
             panel.setFrameOrigin(NSPoint(x: area.midX - Self.size.width / 2,
@@ -94,62 +89,16 @@ final class ClipboardBezelController {
             MainActor.assumeIsolated {
                 guard NSEvent.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty
                 else { return }
-                self?.commit()
+                self?.session.commit()
             }
         }
     }
 
-    private func close() {
-        guard isOpen else { return }
-        isOpen = false
+    private func closePanel() {
         releaseTimer?.invalidate()
         releaseTimer = nil
         panel.orderOut(nil)
     }
-
-    /// Puts the selected entry on the clipboard, closes the preview, and pastes it.
-    private func commit() {
-        guard isOpen else { return }
-        let restored = store.restoreSelected()
-        close()
-        if restored { pasteDelivery.paste() }
-    }
-
-    private func handleScroll(_ delta: CGFloat) {
-        guard isOpen, delta != 0 else { return }
-        store.move(delta > 0 ? HM_CLIPBOARD_STEP_NEWER : HM_CLIPBOARD_STEP_OLDER)
-    }
-
-    /// Flycut's bezel keys, matched by key code so they still work with Shift held.
-    private func handleKey(_ event: NSEvent) {
-        guard isOpen else { return }
-        let code = Int(event.keyCode)
-        if UInt32(code) == settings.shortcut.keyCode {
-            store.move(event.modifierFlags.contains(.shift)
-                ? HM_CLIPBOARD_STEP_NEWER : HM_CLIPBOARD_STEP_OLDER)
-            return
-        }
-        switch code {
-        case kVK_Escape: close()
-        case kVK_Return: commit()
-        case kVK_ANSI_KeypadEnter:
-            store.restoreSelected()
-            close()
-        case kVK_UpArrow, kVK_LeftArrow, kVK_ANSI_K: store.move(HM_CLIPBOARD_STEP_NEWER)
-        case kVK_DownArrow, kVK_RightArrow, kVK_ANSI_J: store.move(HM_CLIPBOARD_STEP_OLDER)
-        case kVK_Home: store.move(HM_CLIPBOARD_STEP_NEWEST)
-        case kVK_End: store.move(HM_CLIPBOARD_STEP_OLDEST)
-        case kVK_PageUp: store.move(HM_CLIPBOARD_STEP_TEN_NEWER)
-        case kVK_PageDown: store.move(HM_CLIPBOARD_STEP_TEN_OLDER)
-        case kVK_Delete: store.removeSelected()
-        default:
-            if let index = Self.digitKeys.firstIndex(of: code) { store.jump(to: index) }
-        }
-    }
-
-    /// Number keys in stack order, where 0 is the tenth entry.
-    private static let digitKeys = [kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5,
-                                    kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9, kVK_ANSI_0]
 }
 
 /// One entry, its place in the stack, and when it was copied.

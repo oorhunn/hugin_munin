@@ -2,8 +2,22 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-09
+
+- Merged `feature/resource-coordination-main` into the Swift behavior test branch for PR #9. The
+  only conflict was this log, and both entries were kept. The merged build, all nine tests
+  including `swift_behavior_test`, clang-format, and the 10-second launch smoke test pass, which
+  closes the validation the entry below left unverified.
+
 ## 2026-11-08
 
+- Added a CMake/CTest Swift behavior target for shortcut recording, clipboard preview input,
+  commit/copy/cancel behavior, isolated settings persistence and callbacks, and worker-thread
+  callback copying and receiver lifetimes. The panel uses the same extracted preview session.
+  Fixed recording Cmd+A (Carbon key code zero) and safe fallback for corrupt saved key codes.
+  `git diff --check` passes. Build, CTest, and launch smoke validation remain unverified: the
+  resource coordinator reported constrained memory and never granted the queued build; the
+  request was cancelled without starting it.
 - Resolved PR #7 conflicts with current `main`, retaining the resource coordinator and adopting
   the new C++ formatting style plus Objective-C++ sanitizer/lint coverage. The merged build,
   all eight tests, formatting, clang-tidy for all C++/Objective-C++ sources, and the 10-second

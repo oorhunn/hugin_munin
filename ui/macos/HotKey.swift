@@ -15,7 +15,7 @@ struct HotKey: Equatable {
     /// A usable shortcut needs a key and at least one of Cmd, Option, or Control, which makes it
     /// a system-wide combination rather than plain typing.
     var isValid: Bool {
-        keyCode != 0 &&
+        keyCode <= 127 &&
             modifiers & UInt32(cmdKey | optionKey | controlKey) != 0
     }
 

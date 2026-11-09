@@ -52,6 +52,7 @@ add_executable(HuginMunin MACOSX_BUNDLE
   ui/macos/Monitor.swift
   ui/macos/Clipboard.swift
   ui/macos/ClipboardBezel.swift
+  ui/macos/ClipboardPreviewSession.swift
   ui/macos/HotKey.swift
   ui/macos/FileShelf.swift
   ui/macos/Notch.swift
@@ -90,6 +91,22 @@ if(BUILD_TESTING)
     add_test(NAME ${test} COMMAND ${test})
     list(APPEND hm_test_targets ${test})
   endforeach()
+  # Sanitizer presets build only C++; do not register an unbuilt Swift test with CTest.
+  if(NOT CMAKE_CXX_FLAGS MATCHES "-fsanitize=")
+    add_executable(swift_behavior_test
+      tests/swift_behavior_test.swift
+      ui/macos/HotKey.swift
+      ui/macos/Settings.swift
+      ui/macos/Clipboard.swift
+      ui/macos/ClipboardPreviewSession.swift
+      ui/macos/Monitor.swift
+    )
+    target_link_libraries(swift_behavior_test PRIVATE hm_bridge)
+    target_link_options(swift_behavior_test PRIVATE "SHELL:-Xlinker -no_warn_duplicate_libraries")
+    add_test(NAME swift_behavior_test COMMAND swift_behavior_test)
+    set_tests_properties(swift_behavior_test PROPERTIES TIMEOUT 30)
+  endif()
+
   # The sanitizer presets build this rather than `all`, because the Swift app does not link against
   # sanitized C++ objects.
   add_custom_target(hm_tests DEPENDS ${hm_test_targets} hm-mcp hm-run)
