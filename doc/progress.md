@@ -4,6 +4,14 @@ What has been accomplished, newest first.
 
 ## 2026-11-09
 
+- Investigated a report that a `.qmd` file could be added to the shelf but not moved out. No
+  file-type cause was found: AppKit gives `.qmd`, `.md`, and `.pdf` URLs the same pasteboard data,
+  mouse events reach the drag view through the SwiftUI stack, and the existence check still
+  succeeded for an app without privacy access to the file. The original failure was not reproduced,
+  because that needs a real drag, so this report remains open.
+- Fixed a related defect found while reading the code: the panel accepted its own outgoing drags,
+  so releasing an item over it could remove the entry without moving the file. Real-drag behavior
+  of this fix is unverified. Added unified-log entries for refused drags and final operations.
 - Hid the file shelf while it is empty. The expanded panel is now 319 points instead of 446 in that
   state, keeping the jobs list at its height, and the window resizes with it so no invisible area catches the pointer. The empty-shelf
   hint is gone, so dropping on the notch is undocumented in the UI until an item exists.

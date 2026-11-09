@@ -1,7 +1,10 @@
 import AppKit
 import HMBridge
 import Observation
+import OSLog
 import SwiftUI
+
+private let shelfLog = Logger(subsystem: "HuginMunin", category: "FileShelf")
 
 @MainActor @Observable
 final class FileShelf {
@@ -52,7 +55,10 @@ final class ShelfDropHosting: NSHostingView<AnyView> {
     required init(coder: NSCoder) { fatalError() }
 
     private func urls(_ sender: any NSDraggingInfo) -> [URL] {
-        (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+        // A source inside this app is the shelf's own outgoing drag. Accepting it would report a
+        // completed copy to the source, which then removes the entry although nothing moved.
+        guard sender.draggingSource == nil else { return [] }
+        return (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
 
@@ -155,6 +161,7 @@ private final class ShelfDragView: NSView, NSDraggingSource {
     override func mouseDown(with event: NSEvent) {}
     override func mouseDragged(with event: NSEvent) {
         guard FileManager.default.fileExists(atPath: url.path) else {
+            shelfLog.notice("Drag refused, file not found: \(self.url.path, privacy: .private) (.\(self.url.pathExtension, privacy: .public))")
             NSSound.beep()
             return
         }
@@ -171,6 +178,7 @@ private final class ShelfDragView: NSView, NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint,
                          operation: NSDragOperation) {
+        shelfLog.notice("Drag of .\(self.url.pathExtension, privacy: .public) ended with operation \(operation.rawValue, privacy: .public)")
         if !operation.intersection([.copy, .move]).isEmpty { completed?() }
         state?.dragging = false
     }
