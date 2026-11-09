@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let clipboard = ClipboardStore()
     private lazy var settingsWindow = SettingsWindowController(settings: settings,
                                                                 clipboard: clipboard)
+    private let diskTracker = DiskTracker()
+    private lazy var diskWindow = DiskWindowController(tracker: diskTracker)
     private lazy var hotKeys = HotKeyCenter()
     private var notch: NotchController?
     private var bezel: ClipboardBezelController?
@@ -20,10 +22,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.onKeepClipboardHistoryChange = { [clipboard, settings] in
             clipboard.setHistoryFile(settings.clipboardHistoryFile)
         }
-        let notch = NotchController(monitor: monitor, settings: settings) {
-            [weak self] in
+        diskTracker.start()
+        let notch = NotchController(monitor: monitor, disk: diskTracker, settings: settings,
+                                    openSettings: { [weak self] in
             self?.settingsWindow.show()
-        }
+        }, openDisk: { [weak self] in
+            self?.diskWindow.show()
+        })
         settings.onWingMetricsChange = { [weak notch] in notch?.layout() }
         self.notch = notch
         notch.show()
@@ -38,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         monitor.stop()
         clipboard.stop()
+        diskTracker.stop()
     }
 }
 

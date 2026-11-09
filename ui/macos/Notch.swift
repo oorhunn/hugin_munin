@@ -10,6 +10,10 @@ struct NotchGeometry: Equatable {
     static let expandedHeightWithShelf: CGFloat = 446
     /// Drops the shelf and the gap above it, so the jobs list keeps its height.
     static let expandedHeightWithoutShelf: CGFloat = 319
+    /// Height of the slides at the top of the expanded panel. Fixed so that a swipe can be told
+    /// apart from one over the file shelf below, which scrolls sideways itself.
+    static let slideHeight: CGFloat = 62
+    static let slideTop: CGFloat = 8
 
     let screenFrame: NSRect
     let notchWidth: CGFloat // 0 on screens without a notch
@@ -57,14 +61,33 @@ struct NotchGeometry: Equatable {
     }
 }
 
+/// A slide of the expanded panel. The declaration order is the order on screen.
+enum NotchPage: String, CaseIterable, Identifiable {
+    case system = "System", disk = "Disk"
+
+    var id: Self { self }
+}
+
 @MainActor @Observable
 final class NotchState {
     var expanded = false
     var dragging = false
     let shelf = FileShelf()
     var geometry: NotchGeometry
+    var page = NotchPage.system
 
     init(geometry: NotchGeometry) { self.geometry = geometry }
+
+    /// Moves to the slide `offset` places along, and stays put at either end.
+    func movePage(by offset: Int) {
+        let pages = NotchPage.allCases
+        guard let index = pages.firstIndex(of: page), pages.indices.contains(index + offset) else { return }
+        show(pages[index + offset])
+    }
+
+    func show(_ page: NotchPage) {
+        withAnimation(.easeInOut(duration: 0.25)) { self.page = page }
+    }
 }
 
 /// Borderless panel that floats over the menu bar around the notch and expands on hover.
@@ -82,8 +105,11 @@ final class NotchController {
     private let panelTracker = HoverTracker()
     private var screenObserver: NSObjectProtocol?
     private var collapseWork: DispatchWorkItem?
+    private var swipeDistance: CGFloat = 0
+    private var swipeUsed = false
 
-    init(monitor: Monitor, settings: Settings, openSettings: @escaping () -> Void) {
+    init(monitor: Monitor, disk: DiskTracker, settings: Settings,
+         openSettings: @escaping () -> Void, openDisk: @escaping () -> Void) {
         self.settings = settings
         state = NotchState(geometry: NotchGeometry(screen: Self.preferredScreen()))
         panel = Self.makePanel(level: Int(CGWindowLevelForKey(.mainMenuWindow)) + 3)
@@ -99,8 +125,9 @@ final class NotchController {
 
         state.shelf.onChange = { [weak self] in self?.layout() }
 
-        let hosting = ShelfDropHosting(rootView: AnyView(NotchView(monitor: monitor, settings: settings,
-                                                        state: state, openSettings: openSettings)))
+        let hosting = ShelfDropHosting(rootView: AnyView(NotchView(monitor: monitor, disk: disk, settings: settings,
+                                                        state: state, openSettings: openSettings,
+                                                        openDisk: openDisk)))
         hosting.sizingOptions = []
         panel.contentView = hosting
         for receiver in [hosting, catcher] {
@@ -116,7 +143,34 @@ final class NotchController {
         triggerTracker.attach(to: catcher)
         panelTracker.onEnter = { [weak self] in self?.cancelCollapse() }
         panelTracker.onExit = { [weak self] in self?.scheduleCollapse() }
+        NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            MainActor.assumeIsolated { self?.handleScroll(event) }
+            return event
+        }
         layout()
+    }
+
+    /// True when the pointer is over the slides, as opposed to the lists below them.
+    private func isOverSlides(_ event: NSEvent) -> Bool {
+        let fromTop = panel.frame.height - event.locationInWindow.y - state.geometry.height
+        return (0...(NotchGeometry.slideTop + NotchGeometry.slideHeight)).contains(fromTop)
+    }
+
+    /// Turns a horizontal swipe over the slides into one change of slide. A trackpad swipe reports
+    /// phases and a mouse does not, so a mouse wheel can move on again once it has travelled as far.
+    private func handleScroll(_ event: NSEvent) {
+        guard event.window === panel, state.expanded,
+              isOverSlides(event), event.momentumPhase == [] else { return }
+        if event.phase == .began {
+            swipeDistance = 0
+            swipeUsed = false
+        }
+        guard !swipeUsed else { return }
+        swipeDistance += event.scrollingDeltaX
+        guard abs(swipeDistance) >= 30 else { return }
+        state.movePage(by: swipeDistance < 0 ? 1 : -1)
+        swipeDistance = 0
+        swipeUsed = event.phase != []
     }
 
     private static func makePanel(level: Int) -> NSPanel {
@@ -218,9 +272,11 @@ private final class HoverTracker: NSResponder {
 
 struct NotchView: View {
     let monitor: Monitor
+    let disk: DiskTracker
     let settings: Settings
     let state: NotchState
     let openSettings: () -> Void
+    let openDisk: () -> Void
 
     var body: some View {
         let geometry = state.geometry
@@ -238,7 +294,8 @@ struct NotchView: View {
                         VStack(spacing: 10) {
                             // An explicit closure avoids Swift 6.3's IR-generation crash when
                             // adapting the isolated bound method to a Boolean callback.
-                            NotchPanel(system: monitor.state, openSettings: openSettings,
+                            NotchPanel(system: monitor.state, disk: disk, state: state,
+                                       openSettings: openSettings, openDisk: openDisk,
                                        setPaused: { monitor.setAdmissionsPaused($0) })
                             if !state.shelf.urls.isEmpty {
                                 FileShelfView(state: state)
@@ -297,25 +354,30 @@ private struct WingLabel: View {
     }
 }
 
-/// Compact readout shown when the notch is expanded.
+/// Compact readout shown when the notch is expanded, with the jobs list below it. The top is a
+/// row of slides that a swipe or the labels in the footer move between. Each slide's position
+/// comes straight from the current page, because a ScrollView rebuilt on every expand came to
+/// rest a few points out of place.
 private struct NotchPanel: View {
     let system: SystemState
+    let disk: DiskTracker
+    let state: NotchState
     let openSettings: () -> Void
+    let openDisk: () -> Void
     let setPaused: (Bool) -> Void
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack(alignment: .top, spacing: 16) {
-                Stat(title: "CPU", percent: system.cpuPercent,
-                     detail: system.coreCount == 0 ? "–" : "\(system.coreCount) cores")
-                Stat(title: "Memory", percent: system.memoryPercent,
-                     detail: system.memoryTotal == 0 ? "–"
-                         : "\(Format.bytes(system.memoryUsed)) of \(Format.bytes(system.memoryTotal))")
-                Stat(title: "Disk", percent: system.diskPercent,
-                     detail: system.diskPercent == nil ? "–" : "\(Format.bytes(system.diskFree)) free")
-                Stat(title: "GPU", percent: system.gpuPercent,
-                     detail: system.gpuCoreCount == 0 ? "–" : "\(system.gpuCoreCount) cores")
+            GeometryReader { geometry in
+                HStack(spacing: 0) {
+                    ForEach(NotchPage.allCases) { page in
+                        slide(page).frame(width: geometry.size.width, height: geometry.size.height)
+                    }
+                }
+                .offset(x: -geometry.size.width * pageIndex)
             }
+            .frame(height: NotchGeometry.slideHeight)
+            .clipped()
             Divider().overlay(.white.opacity(0.15))
             HStack {
                 Text("Jobs").font(.caption.weight(.semibold))
@@ -358,13 +420,16 @@ private struct NotchPanel: View {
                 Button(system.admissionsPaused ? "Resume jobs" : "Pause new jobs") {
                     setPaused(!system.admissionsPaused)
                 }
+                Button("Disk Tracker", action: openDisk)
+                Spacer()
+                pageLabels
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }
             .buttonStyle(.borderless)
             .font(.caption)
         }
-        .padding(.top, 8)
+        .padding(.top, NotchGeometry.slideTop)
     }
 
     private func estimate(_ job: RegisteredJob) -> String {
@@ -375,6 +440,75 @@ private struct NotchPanel: View {
         let minutes = max(1, Int(ceil(seconds / 60)))
         let duration = minutes < 60 ? "~\(minutes)m" : "~\(minutes / 60)h \(minutes % 60)m"
         return job.state == "queued" ? "\(duration) duration · waiting" : "\(duration) left"
+    }
+
+    private var pageIndex: CGFloat {
+        CGFloat(NotchPage.allCases.firstIndex(of: state.page) ?? 0)
+    }
+
+    @ViewBuilder
+    private func slide(_ page: NotchPage) -> some View {
+        switch page {
+        case .system: systemSlide
+        case .disk: DiskSlide(tracker: disk)
+        }
+    }
+
+    private var systemSlide: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Stat(title: "CPU", percent: system.cpuPercent,
+                 detail: system.coreCount == 0 ? "–" : "\(system.coreCount) cores")
+            Stat(title: "Memory", percent: system.memoryPercent,
+                 detail: system.memoryTotal == 0 ? "–"
+                     : "\(Format.bytes(system.memoryUsed)) of \(Format.bytes(system.memoryTotal))")
+            Stat(title: "Disk", percent: system.diskPercent,
+                 detail: system.diskPercent == nil ? "–" : "\(Format.bytes(system.diskFree)) free")
+            Stat(title: "GPU", percent: system.gpuPercent,
+                 detail: system.gpuCoreCount == 0 ? "–" : "\(system.gpuCoreCount) cores")
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var pageLabels: some View {
+        HStack(spacing: 10) {
+            ForEach(NotchPage.allCases) { page in
+                Button(page.rawValue) { state.show(page) }
+                    .foregroundStyle(page == state.page ? .primary : .secondary)
+            }
+        }
+    }
+}
+
+/// The disk tracker's summary: free space, and the top of what used it.
+private struct DiskSlide: View {
+    let tracker: DiskTracker
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let report = tracker.report {
+                Text(report.headline).font(.caption.weight(.semibold)).lineLimit(1)
+                if report.hotspots.isEmpty {
+                    Text(report.baseline == nil ? "One scan so far." : "Nothing grew by 50 MB or more.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(report.hotspots.prefix(tracker.status.scanning ? 2 : 3)) { item in
+                    HStack(spacing: 6) {
+                        Text(item.displayPath).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Text(Format.change(item.change)).monospacedDigit().foregroundStyle(.red)
+                    }
+                }
+            } else if !tracker.status.scanning {
+                Text("No scans yet").font(.caption.weight(.semibold))
+                Text("Open Disk Tracker and click Scan Now.").foregroundStyle(.secondary)
+            }
+            if tracker.status.scanning {
+                Text("Scanning: \(tracker.status.filesSeen.formatted()) files")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

@@ -6,9 +6,14 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <unistd.h>
 
 namespace {
 struct Received {
@@ -135,6 +140,97 @@ void clipboard_round_trip()
 }
 } // namespace
 
+namespace {
+struct DiskStatuses {
+  std::mutex mutex;
+  int scan_count = 0;
+  bool scanning = false;
+  std::string error;
+};
+
+void receive_disk_status(const hm_disk_status *status, void *context)
+{
+  auto *statuses = static_cast<DiskStatuses *>(context);
+  const std::scoped_lock lock(statuses->mutex);
+  statuses->scan_count = static_cast<int>(status->scan_count);
+  statuses->scanning = status->scanning;
+  statuses->error = status->error;
+}
+
+// Runs a real scan of a small folder. HOME moves too, so that history stays out
+// of the real one.
+void test_disk_tracker()
+{
+  namespace fs = std::filesystem;
+  const auto base = fs::canonical(fs::temp_directory_path()) /
+                    ("hm_bridge_test_" + std::to_string(getpid()));
+  fs::remove_all(base);
+  fs::create_directories(base / "scanned/project/.git");
+  {
+    std::ofstream file(base / "scanned/project/data", std::ios::binary);
+    const std::string chunk(std::size_t{1024} * 1024, 'x');
+    for (int i = 0; i < 120; ++i)
+      file << chunk;
+  }
+  setenv("HOME", base.c_str(), 1);
+
+  require(hm_disk_default_root_count() > 0, "Default disk roots");
+  require(hm_disk_default_root(0)[0] == '/', "Default disk roots are absolute");
+
+  hm_disk_tracker_set_roots(nullptr, nullptr, 0);
+  hm_disk_tracker_scan(nullptr);
+  hm_disk_tracker_stop(nullptr);
+  hm_disk_report_free(nullptr);
+  require(hm_disk_report_create(nullptr, 0) == nullptr,
+          "A null tracker has no report");
+
+  DiskStatuses statuses;
+  const auto scanned = (base / "scanned").string();
+  const char *roots[] = {scanned.c_str()};
+  auto *tracker =
+      hm_disk_tracker_start(receive_disk_status, &statuses, roots, 1);
+  require(tracker != nullptr, "Disk tracker starts");
+  require(hm_disk_report_create(tracker, 0) == nullptr,
+          "No report before a scan");
+
+  hm_disk_tracker_scan(tracker);
+  bool done = false;
+  for (int i = 0; i < 1000 && !done; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    const std::scoped_lock lock(statuses.mutex);
+    done = !statuses.scanning && statuses.scan_count == 1;
+  }
+  require(done, "The scan finishes");
+
+  auto *report = hm_disk_report_create(tracker, 0);
+  require(report != nullptr, "A scan gives a report");
+  const auto summary = hm_disk_report_summary(report);
+  require(!summary.has_baseline && !summary.volume_compared,
+          "One scan has no baseline");
+  require(summary.volume_total > 0 && summary.free_after > 0,
+          "The volume is read");
+
+  bool found_project = false;
+  const auto project = (base / "scanned/project").string();
+  for (std::size_t i = 0; i < hm_disk_report_row_count(report); ++i) {
+    const auto row = hm_disk_report_row(report, i);
+    if (project == row.path) {
+      found_project = row.is_project && !row.is_file &&
+                      row.after >= std::uint64_t{120} * 1024 * 1024;
+      require(row.parent >= 0, "A nested row has a parent");
+    }
+  }
+  require(found_project, "The report lists the project with its size");
+  require(hm_disk_report_hotspot_count(report) == 0, "One scan blames nothing");
+  require(hm_disk_report_unreadable_count(report) == 0,
+          "Nothing was unreadable");
+  hm_disk_report_free(report);
+
+  hm_disk_tracker_stop(tracker);
+  fs::remove_all(base);
+}
+} // namespace
+
 int main()
 {
   hm_sampler_stop(nullptr);
@@ -168,5 +264,7 @@ int main()
   require(received.calls == calls, "No callback after stop");
 
   clipboard_round_trip();
+  // Last, because it moves HOME and the sampler above needs the real service.
+  test_disk_tracker();
   return 0;
 }

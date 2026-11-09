@@ -4,6 +4,17 @@ What has been accomplished, newest first.
 
 ## 2026-11-09
 
+- Moved `feature/disk_track` onto `origin/main` (`3091895`), which added the resource coordinator,
+  the new C++ style, the empty-shelf panel, and the clipboard preview outside the notch.
+  - The slides now sit above the jobs list, and the clipboard parameters left the notch code.
+  - The disk tracker's C++ follows the new style. `bridge_test` runs its disk scan last, because that
+    scan moves `HOME` and the sampler now reaches the per-user coordinator service.
+  - Format, `clang-tidy`, all 11 tests, the ASan and UBSan and TSan presets, and the launch smoke test
+    pass. A temporary copy forced open showed the System slide, jobs list, and footer fitting the
+    319-point panel.
+  - Not tested: a real swipe, real clicks on the labels and Disk Tracker button, the Disk slide
+    beside the jobs list, a full home-folder scan with its privacy prompts, and the 6-hour schedule.
+
 - Investigated a report that a `.qmd` file could be added to the shelf but not moved out. No
   file-type cause was found: AppKit gives `.qmd`, `.md`, and `.pdf` URLs the same pasteboard data,
   mouse events reach the drag view through the SwiftUI stack, and the existence check still
@@ -79,6 +90,19 @@ What has been accomplished, newest first.
     have not been exercised on a real desktop; the checklist is in `development.md`.
   - macOS denied reading the owner's Flycut preferences, so only Flycut's defaults are matched.
 
+- Moved `feature/disk_track` onto `origin/main` (`b7fe0ad`), which added the file shelf, GPU, and the
+  clipboard history.
+  - The slides now sit at the top of the larger panel, above the clipboard and shelf, and the System
+    slide shows all four metrics. A swipe only changes slide when the pointer is over the slides,
+    because the file shelf below scrolls sideways itself.
+  - Fixed the 30 `clang-tidy` findings in the disk tracker code that CI on `main` would have failed.
+    Three are suppressed with a reason: one recursion and two thread-safety checks that do not apply.
+  - Added the disk tracker to `doc/architecture.md`.
+  - Format, `clang-tidy`, all nine test programs, the ASan and UBSan and TSan presets, and the launch
+    smoke test pass. Both slides fit the panel in a temporary copy with seeded history.
+  - Not tested: a real swipe, including that one over the file shelf leaves the slides alone, and
+    real clicks on the labels and the Disk Tracker button.
+
 - Merged main’s clang-tidy CI setup into the clipboard branch, retaining both documentation
   changes. Made the formatter language-neutral so Objective-C++ remains supported, and
   fixed clipboard findings under the new lint checks (unsigned byte masks, size arithmetic,
@@ -148,7 +172,28 @@ What has been accomplished, newest first.
 - Real Finder drag/drop, copy/move, cancellation, scrolling, and physical notch interactions
   remain unverified; the manual checklist is in `development.md`.
 
-
+- Added a Disk slide to the expanded notch panel, beside a System slide with the existing readout.
+  It shows the free space, how it changed, and the top three things that grew. A trackpad swipe or
+  the System and Disk labels in the footer move between the slides.
+- Verified in a temporary copy of the app with seeded history and the panel forced open:
+  - Both slides line up on first open. Reopening keeps the chosen slide, with the right content.
+  - Synthetic swipe events moved one slide each way, and a swipe with two deltas moved only one.
+    That test removed the check that the event is over the panel, because synthetic events have no
+    window.
+  - The unmodified app stayed running for 10 s, and all seven test programs pass.
+- Not tested:
+  - A real trackpad swipe, a real mouse wheel, or a real click on the labels.
+  - The slide's other states, shown when there are no scans, nothing grew, or a scan is running.
+- Fixed two disk tracker defects found by an independent code review, on `feature/disk_track`.
+  - A failed first save stopped scheduled scans for good, because the attempt was forgotten when no
+    history existed. `disk_tracker_test` now checks that the schedule continues.
+  - The window kept showing the old report when a second scan finished within the same second as
+    the first. No test covers this, because the tests do not reach Swift.
+- Left as they are, from the same review:
+  - A folder under 10 MB that becomes unreadable still counts toward its parent's earlier size, so
+    the parent can show a false loss of up to 10 MB. This is below the 50 MB needed for a row.
+  - Quitting while a report is being built waits for it to finish, which is brief at these snapshot
+    sizes.
 - Merged `main` into the GPU and CI branch. The first CI run of the branch failed in both builds
   with the Swift 6.3.3 compiler crash described below, because the branch predated the fix to the
   login toggle in `ced4a04`. The merge brings that fix in, and it needed no other Swift change.
@@ -178,6 +223,34 @@ What has been accomplished, newest first.
 
 ## 2026-11-05
 
+- Added the disk tracker, on the `feature/disk_track` branch, in a separate window opened from a
+  new Disk Tracker button in the expanded notch panel.
+  - The core scans folders on a background thread at low priority, saves a snapshot of sizes, and
+    compares two snapshots. It names the projects, folders, and files that grew, and sets that
+    against the change in free space on the startup volume.
+  - New platform boundary `disk_walk.hpp`, with the macOS walker built on `fts`. It stays on one
+    volume, does not follow symlinks, counts hard links once, and does not download cloud files.
+  - The window shows the summary, a folder tree, a list of large files, the folders to scan, and
+    progress. Scans repeat every 6 hours once the user has asked for the first one.
+- Verified:
+  - All seven test programs pass, and under ASan and UBSan and under TSan. The sanitizers ran
+    through CMake flags, because the branch was cut from `42a4dea`, before the sanitizer presets.
+  - Scan sizes against `du`: `/Applications` matched exactly (41,487,492 KiB, 210,041 files).
+    `~/Documents/workspace` was within 0.15% (3.5 million files), and it took 123 s at low priority
+    against 90 s for `du`. Its snapshot was 178 KB.
+  - Ran the window in a temporary copy of the app that opened it at launch and scanned a test
+    folder with `HOME` redirected. Empty state, summary, Large files, and the unreadable count all
+    rendered with correct figures. The listed changes added up to the +884 MB shown.
+  - The unmodified app stayed running for 10 s and wrote no history before a scan was asked for.
+- Not tested:
+  - Clicking in the window. No test drove the notch button, row expansion, the context menu, Allow
+    Access, or the Folders popover.
+  - A full scan of the real home folder from the app, or any of the macOS privacy prompts it raises.
+  - A scheduled scan after 6 real hours, which is only covered by `disk_tracker_test` with a fake
+    clock.
+  - The cloud storage setting, on a real cloud folder.
+- Found along the way: `@State` does not compile in this CMake build because the SwiftUI macro
+  plugin is not found, so window state lives in an `@Observable` class like the other settings.
 - Added the copy/paste buffer: a clipboard history of text and images, restored on click.
   - The core keeps a bounded history (`core/src/clipboard.cpp`): 50 entries by default, 1 to 500
     in Settings, and at most 64 MiB of payload in total, evicting the oldest first. Content equal

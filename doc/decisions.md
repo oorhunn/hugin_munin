@@ -12,7 +12,7 @@
 | 2026-11-06 | Add MCP coordination and command utilities to the app, with one shared per-user authority and app-supplied job estimates in the notch hover panel. | Owner accepted the resource coordination plan and requested job visibility. The first implementation uses conservative advisory reservations. |
 | 2026-11-05 | C++23 is the main language. | Set by the project owner. |
 | 2026-11-05 | macOS is the first target and Ubuntu follows. | Set by the project owner. Platform code stays isolated so that Ubuntu can be added later. |
-| 2026-11-05 | The only UI surfaces are the notch UI and the settings menu UI. | Set by the project owner. |
+| 2026-11-05 | The UI surfaces are the notch UI, the settings menu UI, and the disk tracker window. | Set by the project owner, who asked for the disk tracker to have a separate window. |
 | 2026-11-05 | `doc/` is updated with each accomplishment. | Set by the project owner. |
 | 2026-11-05 | `CLAUDE.md` holds the instructions and `AGENTS.md` points to it. | Set by the project owner. |
 | 2026-11-05 | CPU, memory, and disk usage are the first metrics, reusing `resource_visualizer` where possible. | Set by the project owner. |
@@ -47,6 +47,15 @@
 
 | 2026-11-06 | The notch file shelf holds session-only path references, with AppKit file drags and C++ membership logic. | Originals stay in place until the destination handles a move/copy. Successful exports clear entries; cancelled drags retain them. No extra UI surface or storage copy is needed. |
 | 2026-11-09 | The file shelf is hidden while empty, and the expanded panel shrinks with it. | An empty shelf only took up space. Dropping on the notch still adds the first item, at the cost of no longer showing a hint about it. |
+| 2026-11-05 | The disk tracker compares saved scans rather than watching the file system live. | The question is what changed over days, and periodic scans answer it across reboots and while the app is closed. Proposed during the build. |
+| 2026-11-05 | Scans record folders of 10 MB or more and files of 50 MB or more, in text files of about 200 KB. | Keeps 90 days of history small and needs no database, at the cost of an error of up to the limit when something crosses it. Proposed during the build. |
+| 2026-11-05 | A scan runs only after the user asks for the first one, then every 6 hours. | Walking the home folder raises the system's privacy prompts, which should not appear unprompted at launch. Proposed during the build. |
+| 2026-11-05 | Folders that either scan could not read leave the comparison, and their size leaves their parents. | Losing access would otherwise read as a deletion, and gaining it as growth. Proposed during the build. |
+| 2026-11-05 | The growth summary stops at a project, meaning a folder with a `.git` entry, and at a folder whose children do not explain at least half of its growth. | The owner asked which projects or folders used the space, and nested rows would count it more than once. Proposed during the build. |
+| 2026-11-05 | The Swift UI saves the list of folders to scan in `UserDefaults`. | It follows the rule for other preferences. Proposed during the build. |
+| 2026-11-05 | The disk tracker window only reads. It can show an item in Finder but not delete it. | Deleting is a separate feature with its own risks, and it was not requested. Proposed during the build. |
+| 2026-11-06 | The expanded notch panel has two slides, System and Disk, moved between by a swipe or by labels in its footer. | Set by the project owner, who asked to see the disk summary there. The panel keeps its size, and the slide uses the same report and period as the window. |
+| 2026-11-06 | The slides are positioned by an offset from the current page, not a paging `ScrollView`. | A `ScrollView` rebuilt on each expand came to rest about 3 points out of place, and showed the wrong slide after a reopen. Found during the build. |
 
 ## Open questions
 
