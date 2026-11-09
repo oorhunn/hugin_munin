@@ -14,6 +14,7 @@ template <typename T> using Collected = std::expected<T, std::string>;
 
 Collected<std::vector<CpuCoreTicks>> collect_cpu_cores();
 Collected<Memory> collect_memory();
+Collected<MemoryPressure> collect_memory_pressure();
 // Empty where the platform exposes no GPU, such as in some virtual machines.
 Collected<std::vector<Gpu>> collect_gpus();
 
