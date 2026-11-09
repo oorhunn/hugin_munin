@@ -5,7 +5,8 @@
 <h1 align="center">Hugin &amp; Munin</h1>
 
 <p align="center">
-  An overall system watcher with a C++23 core and a minimal UI: a notch display and a settings menu.
+  An overall system watcher with a C++23 core and a minimal UI: a notch display, a settings menu,
+  and a disk tracker window.
 </p>
 
 <p align="center">
@@ -41,6 +42,37 @@ once it holds something. Drag a shelf item to
 Finder or another app when ready. Successful moves or copies remove the entry; cancelled drags
 keep it. The × button only removes the reference. The shelf is temporary and clears when the app
 quits; adding an item leaves its original in place.
+
+## Disk tracker
+
+The disk tracker answers "what used up my free space?". Open **Disk Tracker** from the expanded
+notch and click **Scan Now**. After that, swipe the expanded notch or click **Disk** at the bottom of
+it for a summary: free space and the three things that grew most. Each scan records the size of your folders, and later scans show what
+changed over the last scan, day, week, or month.
+
+- **What used the space** names the projects, folders, and large files that grew. A project is a
+  folder with a `.git` entry.
+- The headline compares the change in free space with what the scans found, so space used outside
+  the scanned folders is reported rather than hidden.
+- **Folders** browses the sizes as a tree, and **Large files** lists files of 50 MB or more. The
+  right-click menu shows an item in Finder. The tracker never changes or deletes anything.
+- **Folders…** chooses what to scan. The default is the home folder, `/Applications`, `/Library`,
+  `/opt`, and `/usr/local`.
+
+After the first scan, scans repeat every 6 hours while the app runs, and history stays in
+`~/Library/Application Support/HuginMunin/DiskHistory` for up to 90 days. Nothing scans until you
+ask for the first one, because macOS asks for permission to read folders such as Documents.
+Folders that cannot be read are left out and counted at the bottom of the window. **Allow Access…**
+opens Full Disk Access in System Settings.
+
+Sizes are measured as space allocated on disk, and hard links count once. Known limits:
+
+- Changes under 50 MB are not listed, and folders under 10 MB are not recorded, so a change can be
+  overstated by up to 10 MB (50 MB for a file) when something crosses that size between scans.
+- A moved folder shows as one loss and one gain.
+- APFS clones count in full for each copy, because the shared blocks are not visible to a scan.
+- Free space is measured on the startup volume, so the headline does not cover a folder on another
+  volume.
 
 ## Build and test
 

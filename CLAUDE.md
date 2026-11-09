@@ -5,14 +5,14 @@ working in this repository. `AGENTS.md` points here, so this file is the single 
 
 ## Layout
 
-- `core/include/hm/`: public headers. `metrics.hpp` is platform-neutral, and `collectors.hpp` is the
-  platform boundary.
+- `core/include/hm/`: public headers. `metrics.hpp` and `disk_snapshot.hpp` are platform-neutral,
+  and `collectors.hpp` and `disk_walk.hpp` are the platform boundary.
 - `core/src/`: platform-neutral code.
 - `core/src/platform/<os>/`: one backend per OS.
 - `core/bridge/`: the C header the Swift UI uses to reach the core, and its implementation.
 - `ui/macos/`: the SwiftUI app. It builds to `build/HuginMunin.app`.
-- `tests/`: `metrics_test` and `sampler_test` need no backend. `collectors_test` and `bridge_test`
-  read the live system.
+- `tests/`: `metrics_test`, `sampler_test`, `disk_snapshot_test`, and `disk_tracker_test` need no
+  backend. `collectors_test`, `bridge_test`, and `disk_walk_test` read the live system.
 - `doc/`: `README.md` is the index, with the progress log, decisions, and a guide per topic.
 - `scripts/`: helpers used both locally and in CI.
 - `.github/workflows/`: `ci.yml` checks every change, and `release.yml` publishes tagged releases.
@@ -49,8 +49,8 @@ and the format command, and `doc/ci-cd.md` for releases.
 
 ### Language
 
-- Write the project in C++23. The notch UI and settings menu UI are the only exceptions, and they
-  use SwiftUI.
+- Write the project in C++23. The notch UI, settings menu UI, and disk tracker window are the only
+  exceptions, and they use SwiftUI.
 - CMake is the build system.
 - Keep logic in the C++ core. UI code only displays state and collects settings.
 
@@ -63,7 +63,8 @@ and the format command, and `doc/ci-cd.md` for releases.
 
 ### UI
 
-- The project has two UI surfaces: the notch UI and the settings menu UI.
+- The project has three UI surfaces: the notch UI, the settings menu UI, and the disk tracker
+  window.
 - Do not add other windows, dashboards, or UI surfaces unless the user asks for them.
 
 ### Scope

@@ -101,3 +101,18 @@ unified log under subsystem `HuginMunin`, category `FileShelf`.
 The panel stays expanded during an outgoing drag. Entries can also be removed without deleting
 anything. Paths are not persisted or tracked after an external rename/move; an unavailable item
 cannot be dragged and can be dismissed with its × button.
+
+## Disk tracker
+
+`core/src/disk_tracker.cpp` runs one background thread. A scan walks the chosen folders through the
+`disk_walk.hpp` platform boundary, and `DiskSnapshotBuilder` turns that walk into a snapshot of
+folder and large file sizes. Snapshots are text files in the history folder, written to a temporary
+name and renamed.
+
+`compare_snapshots` in `core/src/disk_snapshot.cpp` is a pure function that makes a report from two
+snapshots. It takes out anything either scan could not read, compares only folders both scans
+covered, and picks the non-overlapping rows that grew.
+
+The Swift side is `ui/macos/DiskTracker.swift`, which copies reports out of the core off the main
+thread, and `ui/macos/DiskWindow.swift`. The Disk slide at the top of the expanded notch shows the
+same report as the window.

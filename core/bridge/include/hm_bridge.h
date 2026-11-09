@@ -139,6 +139,78 @@ void hm_clipboard_stack_remove(hm_clipboard *clipboard);
 // does not call the callback.
 void hm_clipboard_clear(hm_clipboard *clipboard);
 
+typedef struct {
+  bool scanning;
+  uint64_t files_seen, bytes_seen; // progress of the running scan
+  int64_t last_scan;               // Unix time, zero before the first scan
+  size_t scan_count, unreadable_count;
+  const char *error; // empty when there is none; only valid during the callback
+} hm_disk_status;
+
+typedef struct {
+  bool has_baseline;    // false when there is no earlier scan to compare with
+  bool volume_compared; // false when either scan could not read the volume, so
+                        // that volume_change and unexplained_change are zero
+  int64_t before_time, after_time;
+  uint64_t free_before, free_after, volume_total;
+  int64_t volume_change, scanned_change, unexplained_change;
+} hm_disk_summary;
+
+typedef struct {
+  const char *path; // valid until the report is freed
+  uint64_t before, after;
+  int64_t parent; // index of the parent row, or -1
+  bool is_file, is_project;
+  bool compared; // false where the earlier scan did not cover this path
+} hm_disk_row;
+
+typedef struct hm_disk_tracker hm_disk_tracker;
+typedef struct hm_disk_report hm_disk_report;
+typedef void (*hm_disk_status_callback)(const hm_disk_status *status,
+                                        void *context);
+
+// The folders to scan until the user chooses others. The strings live as long
+// as the program.
+size_t hm_disk_default_root_count(void);
+const char *hm_disk_default_root(size_t index);
+
+// Calls `callback` on a background thread straight away and whenever the status
+// changes. Scans repeat every 6 hours, but only once the first has been asked
+// for. Returns NULL if tracking cannot start.
+hm_disk_tracker *hm_disk_tracker_start(hm_disk_status_callback callback,
+                                       void *context, const char *const *roots,
+                                       size_t root_count);
+
+// Takes effect from the next scan.
+void hm_disk_tracker_set_roots(hm_disk_tracker *tracker,
+                               const char *const *roots, size_t root_count);
+
+// Starts a scan unless one is running.
+void hm_disk_tracker_scan(hm_disk_tracker *tracker);
+
+// Stops any running scan and frees `tracker`. No callback runs after this
+// returns. Accepts NULL.
+void hm_disk_tracker_stop(hm_disk_tracker *tracker);
+
+// Compares the latest scan with the one `since_seconds` before it, or with the
+// previous scan when that is zero. Reads from disk, so call it off the main
+// thread, but not at the same time as hm_disk_tracker_stop. Returns NULL when
+// there is no scan to report on or one cannot be read.
+hm_disk_report *hm_disk_report_create(hm_disk_tracker *tracker,
+                                      int64_t since_seconds);
+hm_disk_summary hm_disk_report_summary(const hm_disk_report *report);
+size_t hm_disk_report_row_count(const hm_disk_report *report);
+hm_disk_row hm_disk_report_row(const hm_disk_report *report, size_t index);
+// Row indexes of the folders and projects that grew, largest first.
+size_t hm_disk_report_hotspot_count(const hm_disk_report *report);
+size_t hm_disk_report_hotspot(const hm_disk_report *report, size_t index);
+// Paths left out of the report, because a scan could not read them.
+size_t hm_disk_report_unreadable_count(const hm_disk_report *report);
+const char *hm_disk_report_unreadable(const hm_disk_report *report,
+                                      size_t index);
+// Accepts NULL.
+void hm_disk_report_free(hm_disk_report *report);
+
 #ifdef __cplusplus
 }
 #endif

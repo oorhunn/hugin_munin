@@ -12,6 +12,12 @@ enum Format {
         return String(format: unit >= 3 ? "%.1f %@" : "%.0f %@", value, units[unit])
     }
 
+    /// A signed size, such as "+1.2 GB".
+    static func change(_ value: Int64) -> String {
+        guard value != 0 else { return "0 B" }
+        return (value > 0 ? "+" : "−") + bytes(value.magnitude)
+    }
+
     static func percent(_ value: Double?) -> String {
         guard let value else { return "–" }
         return String(format: "%.0f%%", value)

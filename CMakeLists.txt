@@ -17,11 +17,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(hm_core
   core/src/clipboard.cpp
+  core/src/disk_snapshot.cpp
+  core/src/disk_tracker.cpp
   core/src/metrics.cpp
   core/src/sampler.cpp
   core/src/coordinator.cpp
   core/src/platform/macos/coordinator_ipc.cpp
   core/src/platform/macos/collectors.cpp
+  core/src/platform/macos/disk_walk.cpp
   core/src/platform/macos/pasteboard.mm
 )
 target_include_directories(hm_core PUBLIC core/include third_party)
@@ -48,6 +51,8 @@ set(CMAKE_Swift_LANGUAGE_VERSION 6)
 # Incremental mode fails on relink with swiftc's cannotResolveTempPath error.
 set(CMAKE_Swift_COMPILATION_MODE wholemodule)
 add_executable(HuginMunin MACOSX_BUNDLE
+  ui/macos/DiskTracker.swift
+  ui/macos/DiskWindow.swift
   ui/macos/main.swift
   ui/macos/Monitor.swift
   ui/macos/Clipboard.swift
@@ -83,7 +88,8 @@ if(BUILD_TESTING)
   add_test(NAME mcp_integration COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/mcp_integration.py $<TARGET_FILE:hm-mcp>)
   set_tests_properties(mcp_integration PROPERTIES TIMEOUT 30)
   add_dependencies(hm_bridge hm-service)
-  foreach(test metrics_test collectors_test sampler_test clipboard_test bridge_test file_shelf_test coordinator_test)
+  foreach(test metrics_test collectors_test sampler_test clipboard_test bridge_test file_shelf_test coordinator_test
+          disk_snapshot_test disk_tracker_test disk_walk_test)
     add_executable(${test} tests/${test}.cpp)
     target_link_libraries(${test} PRIVATE hm_bridge)
     target_compile_options(${test} PRIVATE -Wall -Wextra -Wpedantic)

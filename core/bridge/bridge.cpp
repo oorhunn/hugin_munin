@@ -2,6 +2,7 @@
 #include "hm_bridge.h"
 
 #include "hm/clipboard.hpp"
+#include "hm/disk_tracker.hpp"
 #include "hm/file_shelf.hpp"
 #include "hm/sampler.hpp"
 #include <cstdlib>
@@ -11,7 +12,10 @@
 #include <exception>
 #include <limits>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 struct hm_sampler {
   std::mutex mutex;
@@ -67,6 +71,14 @@ struct hm_clipboard {
   hm::ClipboardWatcher watcher;
 };
 
+struct hm_disk_tracker {
+  hm::DiskTracker tracker;
+};
+
+struct hm_disk_report {
+  hm::DiskReport report;
+};
+
 namespace {
 // Cuts a UTF-8 preview of at most clipboard_preview_bytes bytes, never
 // splitting a character.
@@ -88,6 +100,18 @@ char *duplicate(const char *bytes, std::size_t count)
   if (copy != nullptr)
     std::memcpy(copy, bytes, count);
   return copy;
+}
+
+std::vector<std::string> to_strings(const char *const *strings,
+                                    std::size_t count)
+{
+  return {strings, strings + count};
+}
+
+const std::vector<std::string> &default_roots()
+{
+  static const auto roots = hm::default_disk_roots();
+  return roots;
 }
 } // namespace
 
@@ -307,5 +331,123 @@ const char *hm_file_shelf_path(const hm_file_shelf *shelf, size_t index)
   return shelf && index < shelf->value.paths().size()
              ? shelf->value.paths()[index].c_str()
              : nullptr;
+}
+
+size_t hm_disk_default_root_count(void)
+{
+  return default_roots().size();
+}
+
+const char *hm_disk_default_root(size_t index)
+{
+  return default_roots().at(index).c_str();
+}
+
+hm_disk_tracker *hm_disk_tracker_start(hm_disk_status_callback callback,
+                                       void *context, const char *const *roots,
+                                       size_t root_count)
+{
+  try {
+    hm::DiskTrackerOptions options;
+    options.roots = to_strings(roots, root_count);
+    return new hm_disk_tracker{hm::DiskTracker(
+        [callback, context](const hm::DiskTrackerStatus &status) {
+          const hm_disk_status out{
+              status.scanning,     status.files_seen,
+              status.bytes_seen,   status.last_scan.value_or(0),
+              status.scan_count,   status.unreadable_count,
+              status.error.c_str()};
+          callback(&out, context);
+        },
+        std::move(options))};
+  } catch (const std::exception &) {
+    return nullptr;
+  }
+}
+
+void hm_disk_tracker_set_roots(hm_disk_tracker *tracker,
+                               const char *const *roots, size_t root_count)
+{
+  if (tracker)
+    tracker->tracker.set_roots(to_strings(roots, root_count));
+}
+
+void hm_disk_tracker_scan(hm_disk_tracker *tracker)
+{
+  if (tracker)
+    tracker->tracker.scan_now();
+}
+
+void hm_disk_tracker_stop(hm_disk_tracker *tracker)
+{
+  delete tracker;
+}
+
+hm_disk_report *hm_disk_report_create(hm_disk_tracker *tracker,
+                                      int64_t since_seconds)
+{
+  if (!tracker)
+    return nullptr;
+  try {
+    auto report = tracker->tracker.report(since_seconds);
+    return report ? new hm_disk_report{std::move(*report)} : nullptr;
+  } catch (const std::exception &) {
+    return nullptr;
+  }
+}
+
+hm_disk_summary hm_disk_report_summary(const hm_disk_report *report)
+{
+  const auto &r = report->report;
+  return {r.before_time.has_value(),
+          r.volume_compared,
+          r.before_time.value_or(0),
+          r.after_time,
+          r.free_before,
+          r.free_after,
+          r.volume_total,
+          r.volume_change(),
+          r.scanned_change,
+          r.unexplained_change()};
+}
+
+size_t hm_disk_report_row_count(const hm_disk_report *report)
+{
+  return report->report.rows.size();
+}
+
+hm_disk_row hm_disk_report_row(const hm_disk_report *report, size_t index)
+{
+  const auto &row = report->report.rows.at(index);
+  return {row.path.c_str(), row.before,
+          row.after,        row.parent ? static_cast<int64_t>(*row.parent) : -1,
+          row.is_file,      row.is_project,
+          row.compared};
+}
+
+size_t hm_disk_report_hotspot_count(const hm_disk_report *report)
+{
+  return report->report.hotspots.size();
+}
+
+size_t hm_disk_report_hotspot(const hm_disk_report *report, size_t index)
+{
+  return report->report.hotspots.at(index);
+}
+
+size_t hm_disk_report_unreadable_count(const hm_disk_report *report)
+{
+  return report->report.unreadable.size();
+}
+
+const char *hm_disk_report_unreadable(const hm_disk_report *report,
+                                      size_t index)
+{
+  return report->report.unreadable.at(index).c_str();
+}
+
+void hm_disk_report_free(hm_disk_report *report)
+{
+  delete report;
 }
 }
