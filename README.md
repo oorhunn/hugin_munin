@@ -36,7 +36,8 @@ Bundled `hm-mcp`, `hm-service`, and `hm-run` utilities coordinate agent resource
 one shared per-user service. See [setup and usage](doc/resource-coordination.md). Reservations
 and command parallelism hints are cooperative; they are not hard CPU or RAM limits.
 
-Drop documents or folders onto the notch to keep them on the **File shelf**. Drag a shelf item to
+Drop documents or folders onto the notch to keep them on the **File shelf**, which only appears
+once it holds something. Drag a shelf item to
 Finder or another app when ready. Successful moves or copies remove the entry; cancelled drags
 keep it. The × button only removes the reference. The shelf is temporary and clears when the app
 quits; adding an item leaves its original in place.

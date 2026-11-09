@@ -13,6 +13,8 @@ final class FileShelf {
     private let storage = Handle()
     private var handle: OpaquePointer? { storage.pointer }
     private(set) var urls: [URL] = []
+    /// Lets the notch resize its window when the shelf gains or loses items.
+    @ObservationIgnored var onChange: (() -> Void)?
 
     func add(_ urls: [URL]) {
         for url in urls where url.isFileURL {
@@ -30,6 +32,7 @@ final class FileShelf {
         urls = (0..<hm_file_shelf_count(handle)).compactMap {
             hm_file_shelf_path(handle, $0).map { URL(fileURLWithPath: String(cString: $0)) }
         }
+        onChange?()
     }
 }
 
@@ -91,31 +94,25 @@ struct FileShelfView: View {
                 Text("\(shelf.urls.count) items").foregroundStyle(.secondary)
             }
             .font(.caption)
-            if shelf.urls.isEmpty {
-                Text("Drop files or folders onto the notch. Drag them out when ready.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 70)
-            } else {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 10) {
-                        ForEach(shelf.urls, id: \.self) { url in
-                            HStack(spacing: 2) {
-                                ShelfDragItem(url: url, state: state,
-                                              completed: { shelf.remove(url) })
-                                    .frame(width: 145, height: 54)
-                                Button { shelf.remove(url) } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                }
-                                .buttonStyle(.borderless)
-                                .help("Remove from shelf (keeps the original)")
+            ScrollView(.horizontal) {
+                HStack(spacing: 10) {
+                    ForEach(shelf.urls, id: \.self) { url in
+                        HStack(spacing: 2) {
+                            ShelfDragItem(url: url, state: state,
+                                          completed: { shelf.remove(url) })
+                                .frame(width: 145, height: 54)
+                            Button { shelf.remove(url) } label: {
+                                Image(systemName: "xmark.circle.fill")
                             }
-                            .padding(6)
-                            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                            .buttonStyle(.borderless)
+                            .help("Remove from shelf (keeps the original)")
                         }
+                        .padding(6)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
                     }
                 }
-                .frame(height: 78)
             }
+            .frame(height: 78)
         }
         .padding(10)
         .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))

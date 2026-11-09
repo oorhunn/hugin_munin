@@ -90,7 +90,8 @@ absolute paths for the current session, exposed through the C bridge. It never p
 filesystem operations. Shelf mutations happen on the UI thread.
 
 `FileShelf.swift` adapts macOS file pasteboards to the core and renders the shelf inside the
-expanded notch. AppKit drop receivers on both the collapsed trigger and expanded panel accept
+expanded notch. The shelf is hidden while empty, and the panel and its window shrink to fit the
+metrics, so dropping on the notch is how the first item arrives. AppKit drop receivers on both the collapsed trigger and expanded panel accept
 file URLs, including folders. Dragging over the collapsed trigger opens the panel. The drag
 source offers copy and move to other applications; the destination chooses the operation using
 normal macOS rules. A completed copy or move removes the reference, while cancellation retains it.

@@ -2,6 +2,12 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-09
+
+- Hid the file shelf while it is empty. The expanded panel is now 319 points instead of 446 in that
+  state, keeping the jobs list at its height, and the window resizes with it so no invisible area catches the pointer. The empty-shelf
+  hint is gone, so dropping on the notch is undocumented in the UI until an item exists.
+
 ## 2026-11-08
 
 - Resolved PR #7 conflicts with current `main`, retaining the resource coordinator and adopting
