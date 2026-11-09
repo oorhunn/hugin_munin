@@ -41,7 +41,7 @@ jobs:
         run: cmake -S . -B build -G Ninja
       - name: Check C++ with clang-tidy
         run: |
-          git ls-files '*.cpp' |
+          git ls-files '*.cpp' '*.mm' |
             xargs -P 4 -n 1 "$(pipx environment --value PIPX_BIN_DIR)/clang-tidy" --quiet -p build \
               --extra-arg=-isysroot"$(xcrun --show-sdk-path)"
 

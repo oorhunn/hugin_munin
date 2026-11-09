@@ -71,7 +71,8 @@ another build's smoke test, which then reports a failure with status 143.
 
 ## Sanitizers
 
-The presets build only the tests, because the Swift app does not link against sanitized objects.
+The presets instrument both C++ and Objective-C++, including the macOS pasteboard backend.
+Build only the tests, because the Swift app does not link against sanitized objects.
 
 ```sh
 cmake --preset asan-ubsan
@@ -106,8 +107,8 @@ Homebrew does not put `clang-tidy` on `PATH`, and the SDK path has to be passed 
 build first, because the command reads its compile database.
 
 ```sh
-git ls-files '*.cpp' | xargs -P 6 -n 1 "$(brew --prefix llvm)/bin/clang-tidy" --quiet -p build \
-    --extra-arg=-isysroot"$(xcrun --show-sdk-path)"
+git ls-files '*.cpp' '*.mm' | xargs -P 6 -n 1 "$(brew --prefix llvm)/bin/clang-tidy" --quiet \
+    -p build --extra-arg=-isysroot"$(xcrun --show-sdk-path)"
 ```
 
 Results from vendored and SDK headers are filtered out. If a warning is wrong for one line, use

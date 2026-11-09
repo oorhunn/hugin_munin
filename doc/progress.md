@@ -2,6 +2,13 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-09
+
+- Merged `feature/resource-coordination-main` into the Swift behavior test branch for PR #9. The
+  only conflict was this log, and both entries were kept. The merged build, all nine tests
+  including `swift_behavior_test`, clang-format, and the 10-second launch smoke test pass, which
+  closes the validation the entry below left unverified.
+
 ## 2026-11-08
 
 - Added a CMake/CTest Swift behavior target for shortcut recording, clipboard preview input,
@@ -11,12 +18,30 @@ What has been accomplished, newest first.
   `git diff --check` passes. Build, CTest, and launch smoke validation remain unverified: the
   resource coordinator reported constrained memory and never granted the queued build; the
   request was cancelled without starting it.
+- Resolved PR #7 conflicts with current `main`, retaining the resource coordinator and adopting
+  the new C++ formatting style plus Objective-C++ sanitizer/lint coverage. The merged build,
+  all eight tests, formatting, clang-tidy for all C++/Objective-C++ sources, and the 10-second
+  app launch smoke test pass. Uncommitted work in the original checkout was left untouched.
 
 - Ported the MCP resource coordination utilities onto current `main`, preserving clipboard
   history, its separate preview, and the file shelf. Jobs appear above the shelf in the hover panel.
   The combined build, all eight tests, formatting, clang-tidy on changed C++ sources, and the
   10-second app launch smoke test pass. The expanded hover layout remains visually unverified.
 
+- Extended both sanitizer presets to Objective-C++, so the macOS pasteboard backend receives
+  the same instrumentation as C++. CI and the documented clang-tidy command now include `.mm`.
+- Fixed the newly exposed pasteboard lint findings by merging the text condition and checking
+  the nullable UTF-8 conversion before constructing a string.
+- clang-tidy 23.1.4 passes for all tracked C++ and Objective-C++ sources. All six test programs
+  pass under ASan/UBSan and TSan; the changed pasteboard source passes clang-format.
+
+- Replaced the root `.clang-format` with a new style and reformatted all C++ and Objective-C++ to
+  it. The style uses a 2-space indent, 80 columns, no short blocks, functions, or loops on one line,
+  and braces on their own line after functions and enums. The requested file also set
+  `Language: Cpp`, which was left out because clang-format then refuses `pasteboard.mm` and the CI
+  Format job fails. The change is formatting only. Local clang-format and clang-tidy 23.1.4, a
+  Debug build, all six tests, and the launch smoke check pass. Open branches will need to be
+  reformatted or will conflict when they merge this.
 - Moved the clipboard preview out of the notch into a window in the middle of the screen, at
   Flycut's size, with scroll and double click as in Flycut. The notch now has no clipboard content
   and returned to its 238-point panel. Clipboard controls moved to a Clipboard section in Settings,
