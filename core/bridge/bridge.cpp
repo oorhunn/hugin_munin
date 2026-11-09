@@ -1,50 +1,73 @@
+#include "hm/coordinator.hpp"
 #include "hm_bridge.h"
 
 #include "hm/clipboard.hpp"
 #include "hm/file_shelf.hpp"
 #include "hm/sampler.hpp"
-
-#include <chrono>
 #include <cstdlib>
 #include <cstring>
+
+#include <condition_variable>
 #include <exception>
 #include <limits>
+#include <mutex>
+#include <thread>
 
 struct hm_sampler {
-  hm::Sampler sampler;
+  std::mutex mutex;
+  std::condition_variable_any wake;
+  double interval;
+  bool changed = false;
+  std::jthread worker;
+  hm_sampler(hm_sample_callback callback, void *context, double seconds)
+      : interval(seconds),
+        worker([this, callback, context](const std::stop_token &stop) {
+          while (!stop.stop_requested()) {
+            hm_sample out{};
+            out.cpu_percent = out.memory_percent = out.disk_percent =
+                out.gpu_percent = std::numeric_limits<double>::quiet_NaN();
+            std::string snapshot;
+            try {
+              hm::ensure_coordinator();
+              auto result =
+                  hm::coordinator_request({{"tool", "get_capacity"},
+                                           {"arguments", hm::Json::object()}});
+              snapshot = result.dump();
+              auto &s = result.at("system");
+              auto percent = [&](const char *key) {
+                return s.contains(key) && s[key].is_number()
+                           ? s[key].get<double>()
+                           : std::numeric_limits<double>::quiet_NaN();
+              };
+              out.cpu_percent = percent("cpu_percent");
+              out.memory_percent = percent("memory_percent");
+              out.disk_percent = percent("disk_percent");
+              out.gpu_percent = percent("gpu_percent");
+              out.core_count = s.value("core_count", size_t{0});
+              out.gpu_core_count = s.value("gpu_core_count", size_t{0});
+              out.memory_used = s.value("memory_used", uint64_t{0});
+              out.memory_total = s.value("memory_total", uint64_t{0});
+              out.disk_free = s.value("disk_free", uint64_t{0});
+            } catch (const std::exception &) {
+              snapshot =
+                  R"({"error":"Resource service unavailable","jobs":[]})";
+            }
+            out.coordination_json = snapshot.c_str();
+            callback(&out, context);
+            std::unique_lock lock(mutex);
+            wake.wait_for(lock, stop, std::chrono::duration<double>(interval),
+                          [this] { return changed; });
+            changed = false;
+          }
+        })
+  {
+  }
 };
-
 struct hm_clipboard {
   hm::ClipboardWatcher watcher;
 };
 
 namespace {
-constexpr double unknown = std::numeric_limits<double>::quiet_NaN();
-
-hm_sample to_c(const hm::Sample &sample)
-{
-  hm_sample out{};
-  out.cpu_percent = sample.cpu_percent.value_or(unknown);
-  out.memory_percent = unknown;
-  out.disk_percent = unknown;
-  out.gpu_percent = sample.gpu_percent.value_or(unknown);
-  out.core_count = sample.core_count;
-  out.gpu_core_count = sample.gpu_core_count.value_or(0);
-  if (sample.memory) {
-    out.memory_used = sample.memory->used;
-    out.memory_total = sample.memory->total;
-    out.memory_percent =
-        hm::used_percent(sample.memory->used, sample.memory->total)
-            .value_or(unknown);
-  }
-  if (sample.disk) {
-    out.disk_free = sample.disk->total - sample.disk->used;
-    out.disk_percent = hm::used_percent(sample.disk->used, sample.disk->total)
-                           .value_or(unknown);
-  }
-  return out;
-}
-
 // Cuts a UTF-8 preview of at most clipboard_preview_bytes bytes, never
 // splitting a character.
 std::string preview(const std::string &text)
@@ -69,36 +92,47 @@ char *duplicate(const char *bytes, std::size_t count)
 } // namespace
 
 extern "C" {
+int hm_admissions_set_paused(int paused)
+{
+  try {
+    hm::coordinator_request({{"tool", "set_admissions_paused"},
+                             {"arguments", {{"paused", paused != 0}}}});
+    return 1;
+  } catch (...) {
+    return 0;
+  }
+}
 hm_sampler *hm_sampler_start(hm_sample_callback callback, void *context,
                              double interval_seconds)
 {
+  if (!callback)
+    return nullptr;
   try {
-    hm::Intervals intervals;
-    intervals.sample = hm::clamp_sample_interval(
-        std::chrono::duration<double>(interval_seconds));
-    return new hm_sampler{hm::Sampler(
-        [callback, context](const hm::Sample &sample) {
-          const auto out = to_c(sample);
-          callback(&out, context);
-        },
-        {}, intervals)};
-  } catch (const std::exception &) {
+    return new hm_sampler(callback, context,
+                          hm::clamp_sample_interval(
+                              std::chrono::duration<double>(interval_seconds))
+                              .count());
+  } catch (...) {
     return nullptr;
   }
 }
-
 void hm_sampler_set_interval(hm_sampler *sampler, double interval_seconds)
 {
-  if (sampler)
-    sampler->sampler.set_interval(hm::clamp_sample_interval(
-        std::chrono::duration<double>(interval_seconds)));
+  if (!sampler)
+    return;
+  {
+    const std::scoped_lock guard(sampler->mutex);
+    sampler->interval = hm::clamp_sample_interval(
+                            std::chrono::duration<double>(interval_seconds))
+                            .count();
+    sampler->changed = true;
+  }
+  sampler->wake.notify_all();
 }
-
 void hm_sampler_stop(hm_sampler *sampler)
 {
   delete sampler;
 }
-
 hm_clipboard *hm_clipboard_start(hm_clipboard_callback callback, void *context,
                                  size_t capacity, const char *history_file)
 {

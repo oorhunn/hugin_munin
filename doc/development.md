@@ -4,6 +4,7 @@
 
 - macOS 14 or later to run the app
 - CMake 3.29 or later, Ninja, a C++23 compiler, and Swift 6
+- Python 3 for the MCP integration test
 - `clang-format` and `clang-tidy` to check C++, from `brew install clang-format llvm`
 
 The Xcode command line tools are enough. The full Xcode app is not needed.
@@ -23,6 +24,8 @@ To quit the app, hover over the notch and click **Quit**.
 
 | Test | Needs a live system | Covers |
 | --- | --- | --- |
+| `coordinator_test` | No | Reservations, expiry, ownership, estimates, and pressure |
+| `mcp_integration` | Yes | Two independent MCP adapters sharing one service |
 | `metrics_test` | No | Metric calculations |
 | `sampler_test` | No | Sampling logic with fake sources |
 | `collectors_test` | Yes | The platform backend |

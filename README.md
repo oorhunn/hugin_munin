@@ -29,6 +29,13 @@ The preview background is 70% opaque (30% transparent). Open **Settings** from
 the expanded notch to change the update interval, the metrics beside the notch, and launch at
 login, and to set the clipboard's history length, shortcut, saving, automatic paste, and clearing.
 
+The hover panel also lists registered jobs, their states, and app-supplied time estimates,
+with a control to pause new jobs.
+
+Bundled `hm-mcp`, `hm-service`, and `hm-run` utilities coordinate agent resource requests through
+one shared per-user service. See [setup and usage](doc/resource-coordination.md). Reservations
+and command parallelism hints are cooperative; they are not hard CPU or RAM limits.
+
 Drop documents or folders onto the notch to keep them on the **File shelf**. Drag a shelf item to
 Finder or another app when ready. Successful moves or copies remove the entry; cancelled drags
 keep it. The × button only removes the reference. The shelf is temporary and clears when the app
@@ -36,7 +43,7 @@ quits; adding an item leaves its original in place.
 
 ## Build and test
 
-Requires CMake 3.29 or later, Ninja, a C++23 compiler, and Swift 6.
+Requires CMake 3.29 or later, Ninja, a C++23 compiler, Swift 6, and Python 3 for integration tests.
 
 ```sh
 cmake -S . -B build -G Ninja
