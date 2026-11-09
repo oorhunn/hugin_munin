@@ -2,6 +2,12 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-09
+
+- Hid the file shelf while it is empty. The expanded panel is now 96 points instead of 238 in that
+  state, and the window resizes with it so no invisible area catches the pointer. The empty-shelf
+  hint is gone, so dropping on the notch is undocumented in the UI until an item exists.
+
 ## 2026-11-08
 
 - Extended both sanitizer presets to Objective-C++, so the macOS pasteboard backend receives
