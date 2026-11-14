@@ -41,6 +41,8 @@ enum Metric: String, CaseIterable, Identifiable {
 /// User preferences, saved between launches.
 @MainActor @Observable
 final class Settings {
+    @ObservationIgnored private let defaults: UserDefaults
+
     static let intervals: [Double] = [0.5, 1, 2, 5, 10]
     static let clipboardCapacities: [Int] = [10, 25, 50, 100, 200]
 
@@ -52,7 +54,7 @@ final class Settings {
 
     var interval: Double {
         didSet {
-            UserDefaults.standard.set(interval, forKey: "interval")
+            defaults.set(interval, forKey: "interval")
             onIntervalChange?(interval)
         }
     }
@@ -60,7 +62,7 @@ final class Settings {
     /// The metrics beside the collapsed notch.
     var wingMetrics: Set<Metric> {
         didSet {
-            UserDefaults.standard.set(wingMetrics.map(\.rawValue), forKey: "wingMetrics")
+            defaults.set(wingMetrics.map(\.rawValue), forKey: "wingMetrics")
             onWingMetricsChange?()
         }
     }
@@ -68,7 +70,7 @@ final class Settings {
     /// How many copies the clipboard history keeps.
     var clipboardCapacity: Int {
         didSet {
-            UserDefaults.standard.set(clipboardCapacity, forKey: "clipboardCapacity")
+            defaults.set(clipboardCapacity, forKey: "clipboardCapacity")
             onClipboardCapacityChange?(clipboardCapacity)
         }
     }
@@ -76,7 +78,7 @@ final class Settings {
     /// Whether the clipboard history survives quitting the app.
     var keepClipboardHistory: Bool {
         didSet {
-            UserDefaults.standard.set(keepClipboardHistory, forKey: "keepClipboardHistory")
+            defaults.set(keepClipboardHistory, forKey: "keepClipboardHistory")
             onKeepClipboardHistoryChange?()
         }
     }
@@ -91,7 +93,6 @@ final class Settings {
     /// The shortcut that opens the clipboard history.
     var shortcut: HotKey {
         didSet {
-            let defaults = UserDefaults.standard
             defaults.set(Int(shortcut.keyCode), forKey: "shortcutKeyCode")
             defaults.set(Int(shortcut.modifiers), forKey: "shortcutModifiers")
             onShortcutChange?(shortcut)
@@ -104,8 +105,8 @@ final class Settings {
     var leftMetrics: [Metric] { Array(orderedWingMetrics.prefix(leftCount)) }
     var rightMetrics: [Metric] { Array(orderedWingMetrics.dropFirst(leftCount)) }
 
-    init() {
-        let defaults = UserDefaults.standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         let saved = defaults.double(forKey: "interval")
         interval = Self.intervals.contains(saved) ? saved : 1
         wingMetrics = defaults.stringArray(forKey: "wingMetrics")
@@ -116,8 +117,8 @@ final class Settings {
         if defaults.object(forKey: "shortcutKeyCode") == nil {
             shortcut = .standard
         } else {
-            let saved = HotKey(keyCode: UInt32(defaults.integer(forKey: "shortcutKeyCode")),
-                               modifiers: UInt32(defaults.integer(forKey: "shortcutModifiers")))
+            let saved = HotKey(keyCode: (UInt32(exactly: defaults.integer(forKey: "shortcutKeyCode")) ?? UInt32.max),
+                               modifiers: (UInt32(exactly: defaults.integer(forKey: "shortcutModifiers")) ?? 0))
             // Migrate the former default while preserving custom combinations.
             let oldDefault = HotKey(keyCode: UInt32(kVK_ANSI_C), modifiers: UInt32(cmdKey | shiftKey))
             shortcut = saved.isValid && saved != oldDefault ? saved : .standard
@@ -249,7 +250,8 @@ final class ShortcutRecorder {
         recording = true
     }
 
-    private func press(_ event: NSEvent) {
+    func press(_ event: NSEvent) {
+        guard recording else { return }
         let pressed = HotKey(keyCode: UInt32(event.keyCode),
                              modifiers: HotKey.carbonModifiers(event.modifierFlags))
         if pressed.isEscape {

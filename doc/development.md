@@ -32,6 +32,7 @@ To quit the app, hover over the notch and click **Quit**.
 | `clipboard_test` | No | The clipboard history and watcher with a fake pasteboard |
 | `bridge_test` | Yes | The C interface, through the real backend and pasteboard |
 | `file_shelf_test` | No | Shelf bridge, path normalization, duplicate rejection, removal, and bounds |
+| `swift_behavior_test` | Yes | Shortcut recording, preview selection and cancellation, settings persistence, and Swift callback lifetimes |
 
 Tests use the small `require` helper in `tests/check.hpp` rather than a framework.
 
@@ -39,8 +40,31 @@ Tests use the small `require` helper in `tests/check.hpp` rather than a framewor
 because there is no fake pasteboard behind the C interface. Run it when you can spare the
 clipboard for a few seconds.
 
-The tests do not cover Swift. After changing `ui/macos/` or the bridge, confirm the app stays
-running, because a Swift concurrency error can pass every test and still crash on launch:
+`swift_behavior_test` compiles the production Swift behavior sources into a standalone executable.
+It uses a fake clipboard selection and paste callback, synthetic key events, and a disposable
+`UserDefaults` suite; it reads but does not change the system clipboard, and it does not require
+Accessibility. It checks preview key/scroll routing, modifier release, repeated shortcuts, copy
+versus paste, cancellation, empty history, failed restores, settings callbacks and migration, and
+recording cancellation. Worker-thread calls into the production C callback entry points check
+main-actor publication, copying borrowed sample/JSON memory, and receiver retention until queued
+tasks finish after `stop()`. It also starts the real sampler and clipboard watcher to check that
+repeated `start` and `stop` calls are safe, that no sample arrives after `stop` returns, and that
+both receivers are then released. The fake clipboard only checks input routing; the real selection
+limits are covered by `clipboard_test`.
+
+Run just these checks with:
+
+```sh
+cmake --build build --target swift_behavior_test
+ctest --test-dir build -R '^swift_behavior_test$' --output-on-failure
+```
+
+The Swift target is included in normal builds and CTest/CI. It is excluded from `hm_tests`, which
+is used by the C++ sanitizer presets. These still need a desktop session, using the manual
+checklists below: Carbon hot key registration, real panel focus and modifier delivery, Accessibility
+permission, actual paste keystrokes, full-screen behavior, drag and drop, login items, and notch
+geometry. After changing `ui/macos/` or the bridge, confirm the app stays running, because a Swift
+concurrency error can pass every test and still crash on launch:
 
 ```sh
 scripts/smoke_test.sh build/HuginMunin.app

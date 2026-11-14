@@ -2,6 +2,29 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-14
+
+- Issue #13: brought the Swift behavior tests to `main`. PR #9 had merged them into
+  `feature/resource-coordination-main` after #7 merged, so they never reached `main`, and they had
+  never been compiled. Applied that work on `09b0607` in branch `test/swift-behavior-main`.
+  - Added checks for modifier release (now `ClipboardPreviewSession.modifiersReleased`, shared by
+    the panel's flags handler and release timer), and for the real sampler and clipboard watcher:
+    repeated `start`/`stop`, no sample after `stop` returns, and both receivers released.
+  - Replaced the 1 ms polling loops with a 15-second deadline helper, and raised the CTest timeout
+    to 60 seconds.
+  - Built locally with `-j 2` and without a coordinator lease when the owner asked for the build, after
+    three lease requests stayed queued under constrained memory pressure for about 95 minutes.
+    The coordinator treats 82% RAM use as constrained, which this 16 GB Mac is at most of the time.
+  - 11 of 12 tests passed, `swift_behavior_test` among them. `bridge_test` was skipped locally
+    because it replaces the system clipboard while the owner's app was running. The smoke test
+    passed. Sanitizer presets, clang-tidy, and CI were not run.
+  - Broke ten tested behaviors one at a time, including Cmd+A recording, paste after a failed
+    restore, double paste, Escape, Control release, a leaked or unstopped sampler, shortcut
+    migration, injected defaults, and idle recording. The test failed for each, and passes again
+    with the code restored.
+  - Real focus, Carbon hot keys, Accessibility, paste delivery, full screen, drag and drop, and the
+    notch still need the manual checklists.
+
 ## 2026-11-09
 
 - Moved `feature/disk_track` onto `origin/main` (`3091895`), which added the resource coordinator,
