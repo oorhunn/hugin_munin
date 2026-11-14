@@ -59,6 +59,9 @@ build/hm-run --cpu 2 --memory-mb 1024 --estimate-seconds 90 \
   --title "Build project" --project "my-project" -- cmake --build build
 ```
 
+For this repository's own builds, pass `--project hugin_munin` so the RAM-percentage limits above
+do not hold them.
+
 The runner waits for a grant, starts a separate process group, lowers the child's priority, and
 sets `CMAKE_BUILD_PARALLEL_LEVEL`, `CTEST_PARALLEL_LEVEL`, and `OMP_NUM_THREADS` to the granted
 whole-core count (at least one). It renews the lease every 20 seconds, forwards interrupt and
@@ -89,7 +92,10 @@ GPU workloads must include their unified-memory demand in `memory_bytes`.
 
 Memory pressure comes from the macOS pressure level. Warning pressure, CPU at 80%, or RAM at
 82% constrain new work; critical memory pressure, CPU at 95%, or RAM at 92% trigger critical
-state. Recovery needs five normal samples. Missing memory pressure/CPU/fresh memory or a service
+state. Jobs from agents registered with project `hugin_munin`, this repository's own builds,
+skip the 82% RAM rule and the cap of 80% RAM minus current use. Everything else still applies to
+them: critical state, macOS warning pressure, the 80% CPU rule, the 70% reservation cap, and one
+active job. The project name is self-declared, like all reservations here. Recovery needs five normal samples. Missing memory pressure/CPU/fresh memory or a service
 sample older than three seconds blocks new admissions. Disk collector failures prevent new disk
 reservations. GPU readings may be unavailable; no GPU slot is granted in that case.
 
