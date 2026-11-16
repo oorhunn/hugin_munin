@@ -39,37 +39,50 @@ double number(const Json &a, const char *key, double fallback, double maximum)
     throw std::runtime_error(std::string("Invalid ") + key);
   return v;
 }
+// The RAM-percentage cutoff is optional so the project's own builds can skip
+// it.
+std::string_view classify(const Sample &s, bool ram_cutoff)
+{
+  if (!s.cpu_percent || !s.memory || !s.memory_fresh || !s.memory_pressure ||
+      !s.memory->total)
+    return "unknown";
+  double ram = static_cast<double>(s.memory->used) /
+               static_cast<double>(s.memory->total);
+  if (*s.cpu_percent >= 95 || ram >= 0.92 ||
+      s.memory_pressure == MemoryPressure::critical)
+    return "critical";
+  if (*s.cpu_percent >= 80 || (ram_cutoff && ram >= 0.82) ||
+      s.memory_pressure == MemoryPressure::warning)
+    return "constrained";
+  return "normal";
+}
 } // namespace
+void Coordinator::Pressure::step(std::string_view next)
+{
+  if (next == "normal" && level != "normal") {
+    if (++recovery >= 5) {
+      level = next;
+      recovery = 0;
+    }
+  } else {
+    level = next;
+    recovery = 0;
+  }
+}
 void Coordinator::observe(const Sample &s, Clock::time_point now)
 {
   sample_ = s;
   observed_ = now;
   observed = true;
-  std::string next = "normal";
-  if (!s.cpu_percent || !s.memory || !s.memory_fresh || !s.memory_pressure ||
-      !s.memory->total)
-    next = "unknown";
-  else {
-    double ram = static_cast<double>(s.memory->used) /
-                 static_cast<double>(s.memory->total);
-    if (*s.cpu_percent >= 95 || ram >= 0.92 ||
-        s.memory_pressure == MemoryPressure::critical)
-      next = "critical";
-    else if (*s.cpu_percent >= 80 || ram >= 0.82 ||
-             s.memory_pressure == MemoryPressure::warning)
-      next = "constrained";
-  }
-  if (next == "normal" && pressure_ != "normal") {
-    if (++recovery_ >= 5) {
-      pressure_ = next;
-      recovery_ = 0;
-    }
-  } else {
-    pressure_ = next;
-    recovery_ = 0;
-  }
+  pressure_.step(classify(s, true));
+  self_pressure_.step(classify(s, false));
 }
-Json Coordinator::capacity(Clock::time_point now)
+bool Coordinator::self_build(const Job &job) const
+{
+  auto agent = agents_.find(job.agent);
+  return agent != agents_.end() && agent->second.project == self_build_project;
+}
+Json Coordinator::capacity(Clock::time_point now, bool own_build)
 {
   const bool fresh = observed && seconds(now, observed_) <= 3;
   double cpuReserved = 0;
@@ -95,17 +108,20 @@ Json Coordinator::capacity(Clock::time_point now)
   double cpu = std::min(
       std::max(0.0, cores * 0.65 - cpuReserved),
       cores * std::max(0.0, 70 - sample_.cpu_percent.value_or(100)) / 100);
-  double memory = std::min(std::max(0.0, total * 0.70 - memoryReserved),
-                           std::max(0.0, total * 0.80 - used - memoryReserved));
+  double memory = std::max(0.0, total * 0.70 - memoryReserved);
+  if (!own_build)
+    memory =
+        std::min(memory, std::max(0.0, total * 0.80 - used - memoryReserved));
+  const auto &pressure = own_build ? self_pressure_.level : pressure_.level;
   double disk =
       sample_.disk && sample_.disk_fresh
           ? std::max(0.0, static_cast<double>(sample_.disk->total -
                                               sample_.disk->used) -
                               10.0 * 1024 * 1024 * 1024 - diskReserved)
           : 0;
-  bool allow = !paused_ && fresh && pressure_ == "normal" && active == 0;
+  bool allow = !paused_ && fresh && pressure == "normal" && active == 0;
   return {
-      {"pressure", fresh ? pressure_ : "unknown"},
+      {"pressure", fresh ? pressure : "unknown"},
       {"sample_age_seconds",
        observed ? Json(seconds(now, observed_)) : Json(nullptr)},
       {"cpu_cores", allow ? cpu : 0},
@@ -173,7 +189,7 @@ void Coordinator::admit(Job &target, Clock::time_point now)
 {
   // FIFO, whole-vector admission, one active job initially. Never release
   // unresponsive work automatically.
-  auto c = capacity(now);
+  auto c = capacity(now, self_build(target));
   for (auto &j : jobs_)
     if (j.state == "queued") {
       if (j.id != target.id)
@@ -324,8 +340,9 @@ Json Coordinator::call(const std::string &tool, const Json &a,
           remaining + (it->state == "queued" ? 0 : seconds(now, it->started));
     }
     auto out = job_json(*it, now);
-    out["action"] =
-        capacity(now)["pressure"] == "normal" ? "continue" : "yield_when_safe";
+    out["action"] = capacity(now, self_build(*it))["pressure"] == "normal"
+                        ? "continue"
+                        : "yield_when_safe";
     out["retry_after_seconds"] = 5;
     return out;
   }
