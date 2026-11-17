@@ -2,7 +2,28 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-17
+
+- Resolved PR #18 merge conflicts with `main` in the decision and progress logs, preserving
+  both the Swift behavior test entries and the coordinator RAM exemption entries. Checked
+  the merged diff and conflict markers; no build or runtime tests were rerun for this
+  documentation-only conflict resolution.
+
 ## 2026-11-14
+
+- Exempted this repository's own builds, jobs from agents registered with project `hugin_munin`,
+  from the coordinator's RAM-percentage limits, at the owner's request. The coordinator now keeps
+  a second pressure state with its own recovery hysteresis that ignores the 82% RAM rule, and
+  drops the "80% RAM minus current use" cap from those jobs' memory budget. Heartbeats only ask
+  them to yield for the remaining rules. Other projects are unchanged.
+  - Added `coordinator_test` cases at 88% RAM: another project waits and the own build runs.
+    Critical RAM, macOS warning pressure, and 85% CPU still hold or yield the own build.
+  - clang-format (Homebrew 23.1.5, not CI's 23.1.4) and clang-tidy on the changed files are
+    clean. Built with `-j 2` without a lease, since the old service would have queued it. 10 of
+    11 tests passed and the smoke test passed. `bridge_test` was skipped because it replaces the
+    system clipboard. Sanitizer presets and CI were not run.
+  - The running `hm-service` is still the old build. The change applies once `main` is rebuilt
+    and that service is restarted.
 
 - Issue #13: brought the Swift behavior tests to `main`. PR #9 had merged them into
   `feature/resource-coordination-main` after #7 merged, so they never reached `main`, and they had

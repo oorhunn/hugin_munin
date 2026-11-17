@@ -78,7 +78,8 @@ and the format command, and `doc/ci-cd.md` for releases.
 ## Agent resource coordination
 
 When the Hugin & Munin MCP server is configured, register with a name and project before heavy
-local work. Request a lease with CPU core equivalents, peak RAM bytes, a unique request key,
+local work. Use the project `hugin_munin` for this repository's builds, including with
+`hm-run --project hugin_munin`. Request a lease with CPU core equivalents, peak RAM bytes, a unique request key,
 a job title, and your application's duration estimate when available. A capacity read alone
 is not a reservation. Wait for `running`, then match build/test concurrency to the grant.
 
