@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-11-17 | Keep failed clipboard saves and deletions pending, retry five times with exponential backoff, expose content-free persistence flags, and offer an explicit Settings retry. | Storage failure must not discard unsaved revisions or imply that a saved copy was deleted; bounded retries limit repeated full-history copies when storage stays broken. |
 | 2026-11-17 | Pin SwiftFormat and SwiftLint release binaries with SHA-256 checksums, and enforce layout plus a small bug-finding rule set in CI. | Local checks match CI independently of the runner Xcode version; layout stays separate from behavior changes. |
 | 2026-11-08 | The clipboard preview is a window in the middle of the screen, the notch shows no clipboard content, and the clipboard's controls live in a Clipboard section of Settings. This replaces the notch preview and history list, and adds a third UI surface. | Requested by the owner, who asked for Flycut's placement. |
 | 2026-11-08 | The clipboard history, text and images, is saved between launches by default, unencrypted, in an owner-only file in Application Support. Settings can turn it off, which deletes the file. It saves after each change, and Clear deletes it at once. This replaces the session-only history. | Requested by the owner, as in Flycut. Saving after each change survives a crash, and the copy happens on the watcher thread. Copies marked private are never recorded, so they never reach the file. |
