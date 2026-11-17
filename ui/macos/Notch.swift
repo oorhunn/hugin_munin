@@ -17,7 +17,7 @@ struct NotchGeometry: Equatable {
 
     let screenFrame: NSRect
     let notchWidth: CGFloat // 0 on screens without a notch
-    let height: CGFloat     // notch or menu bar height
+    let height: CGFloat // notch or menu bar height
 
     init(screen: NSScreen?) {
         guard let screen else {
@@ -126,8 +126,8 @@ final class NotchController {
         state.shelf.onChange = { [weak self] in self?.layout() }
 
         let hosting = ShelfDropHosting(rootView: AnyView(NotchView(monitor: monitor, disk: disk, settings: settings,
-                                                        state: state, openSettings: openSettings,
-                                                        openDisk: openDisk)))
+                                                                   state: state, openSettings: openSettings,
+                                                                   openDisk: openDisk)))
         hosting.sizingOptions = []
         panel.contentView = hosting
         for receiver in [hosting, catcher] {
@@ -239,7 +239,6 @@ final class NotchController {
             panelTracker.detach()
         }
     }
-
 }
 
 /// Owns one tracking area that reports the pointer entering and leaving a view.
@@ -301,9 +300,9 @@ struct NotchView: View {
                                 FileShelfView(state: state)
                             }
                         }
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 12)
-                            .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 12)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
                     }
                 }
             }

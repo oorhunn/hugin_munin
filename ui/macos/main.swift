@@ -6,7 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = Settings()
     private let clipboard = ClipboardStore()
     private lazy var settingsWindow = SettingsWindowController(settings: settings,
-                                                                clipboard: clipboard)
+                                                               clipboard: clipboard)
     private let diskTracker = DiskTracker()
     private lazy var diskWindow = DiskWindowController(tracker: diskTracker)
     private lazy var hotKeys = HotKeyCenter()
@@ -25,10 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         diskTracker.start()
         let notch = NotchController(monitor: monitor, disk: diskTracker, settings: settings,
                                     openSettings: { [weak self] in
-            self?.settingsWindow.show()
-        }, openDisk: { [weak self] in
-            self?.diskWindow.show()
-        })
+                                        self?.settingsWindow.show()
+                                    }, openDisk: { [weak self] in
+                                        self?.diskWindow.show()
+                                    })
         settings.onWingMetricsChange = { [weak notch] in notch?.layout() }
         self.notch = notch
         notch.show()

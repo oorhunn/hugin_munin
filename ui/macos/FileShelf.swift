@@ -13,6 +13,7 @@ final class FileShelf {
         let pointer = hm_file_shelf_create()
         deinit { hm_file_shelf_destroy(pointer) }
     }
+
     private let storage = Handle()
     private var handle: OpaquePointer? { storage.pointer }
     private(set) var urls: [URL] = []
@@ -59,7 +60,7 @@ final class ShelfDropHosting: NSHostingView<AnyView> {
         // completed copy to the source, which then removes the entry although nothing moved.
         guard sender.draggingSource == nil else { return [] }
         return (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+                                                      options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
