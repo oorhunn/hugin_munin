@@ -117,8 +117,8 @@ final class Settings {
         if defaults.object(forKey: "shortcutKeyCode") == nil {
             shortcut = .standard
         } else {
-            let saved = HotKey(keyCode: (UInt32(exactly: defaults.integer(forKey: "shortcutKeyCode")) ?? UInt32.max),
-                               modifiers: (UInt32(exactly: defaults.integer(forKey: "shortcutModifiers")) ?? 0))
+            let saved = HotKey(keyCode: UInt32(exactly: defaults.integer(forKey: "shortcutKeyCode")) ?? UInt32.max,
+                               modifiers: UInt32(exactly: defaults.integer(forKey: "shortcutModifiers")) ?? 0)
             // Migrate the former default while preserving custom combinations.
             let oldDefault = HotKey(keyCode: UInt32(kVK_ANSI_C), modifiers: UInt32(cmdKey | shiftKey))
             shortcut = saved.isValid && saved != oldDefault ? saved : .standard
