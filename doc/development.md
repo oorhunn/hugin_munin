@@ -92,6 +92,12 @@ cmake --build build/tsan --target hm_tests
 ctest --test-dir build/tsan --output-on-failure
 ```
 
+## Coverage
+
+Use `cmake --preset coverage`, build `hm_tests`, then run `python3 scripts/coverage.py` to
+produce annotated HTML and a core/bridge summary. See [Coverage](coverage.md) for complete
+commands, exclusions and the initial baseline. Normal and sanitizer checks are still required.
+
 ## Formatting
 
 C++ follows `.clang-format`. CI uses clang-format 23.1.4, and other versions may disagree on some

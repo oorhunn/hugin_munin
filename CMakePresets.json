@@ -22,6 +22,18 @@
         "CMAKE_CXX_FLAGS": "-fsanitize=thread -fno-omit-frame-pointer",
         "CMAKE_OBJCXX_FLAGS": "-fsanitize=thread -fno-omit-frame-pointer"
       }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Clang core and bridge source coverage",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-fprofile-instr-generate -fcoverage-mapping",
+        "CMAKE_OBJCXX_FLAGS": "-fprofile-instr-generate -fcoverage-mapping",
+        "CMAKE_Swift_NUM_THREADS": "1"
+      }
     }
   ]
 }

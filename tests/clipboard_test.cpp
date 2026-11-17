@@ -329,6 +329,23 @@ void history_file()
               std::chrono::floor<std::chrono::milliseconds>(now),
           "The capture time survives");
 
+  // A destination directory deterministically rejects atomic replacement, even
+  // when tests run as root. The failed save must clean up its temporary file.
+  const auto blocked = folder / "blocked.bin";
+  fs::create_directories(blocked / "keep");
+  require(!hm::save_clipboard_history(blocked, entries),
+          "A failed atomic replacement is reported");
+  require(fs::exists(blocked / "keep") &&
+              !fs::exists(blocked.string() + ".tmp"),
+          "A failed replacement preserves the destination and cleans temporary "
+          "data");
+  fs::remove_all(blocked);
+  require(hm::save_clipboard_history(blocked, entries).has_value(),
+          "Saving recovers after the destination is writable");
+  const auto recovered = hm::load_clipboard_history(blocked);
+  require(recovered && recovered->size() == entries.size(),
+          "The recovered save retains every entry");
+
   const auto size = fs::file_size(file);
   fs::resize_file(file, size - 1);
   require(!hm::load_clipboard_history(file), "A cut-off file is an error");

@@ -4,6 +4,19 @@ What has been accomplished, newest first.
 
 ## 2026-11-17
 
+- Added a separate Clang C++/Objective-C++ coverage preset and local report script, plus CI
+  summary/HTML/JSON artifacts. All 11 instrumented C++ suite entries pass. The first report
+  identified gaps in atomic history-file replacement and UTF-8 bridge previews; added and
+  verified focused failure/recovery and Unicode round-trip tests. Recorded the core/bridge
+  baseline (88.89% lines, 76.97% branches), exclusions and LLVM missing-profile limitations.
+  Hosted coverage publication remains unverified until its new CI job runs.
+
+- Merged current `main` into the issue-cleanup branch, preserving Swift behavior tests and the
+  coordinator's self-build exemption. Resolved documentation conflicts while retaining both
+  sets of entries and restored the pre-existing local signing/disk-plan edits. The updated
+  Release build, all 12 tests and the ten-second launch smoke check pass; all 12 tracked
+  production Swift files pass the pinned formatting/lint checks.
+
 - Clipboard saves retain unsaved revisions on failure, retry automatically with bounded backoff,
   and offer explicit recovery without a new copy. Failed clear/disable deletions stay pending;
   disabling persistence still stops saves. Added content-free C bridge status and Settings

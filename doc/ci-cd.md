@@ -13,6 +13,7 @@ demand.
 | Swift format and lint | `macos-26` | Checks tracked Swift files with pinned SwiftFormat and SwiftLint |
 | Lint | `macos-26` | Checks C++ with clang-tidy 23.1.4, and fails on any warning |
 | Build and test | `macos-26` | Builds the app and tests in Debug and Release, runs the tests, checks minimum-OS metadata, and launches the app |
+| Core and bridge coverage | `macos-26` | Runs instrumented C++/Objective-C++ tests, posts a summary and uploads HTML/JSON coverage |
 | Sanitizers | `macos-26` | Runs the tests under ASan with UBSan, and under TSan |
 
 To reproduce a failure, run the same commands from [Development](development.md).

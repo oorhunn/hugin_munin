@@ -1,5 +1,6 @@
 // The C interface the Swift UI uses, against the live system.
 #include "check.hpp"
+#include "hm/clipboard.hpp"
 #include "hm/pasteboard.hpp"
 #include "hm_bridge.h"
 
@@ -209,6 +210,27 @@ void clipboard_round_trip()
               std::memcmp(snapshot[0].image, pixels.data(), pixels.size()) == 0,
           "Image bytes cross the bridge untouched");
   hm_clipboard_free_snapshot(snapshot, entries);
+
+  // The byte limit lands inside a four-byte UTF-8 character. The preview must
+  // end before that character while restore retains the complete payload.
+  const std::string prefix(hm::clipboard_preview_bytes - 1, 'x');
+  const std::string long_text = prefix + "🙂tail";
+  require(hm::write_pasteboard(
+              {.kind = hm::ClipboardContent::Kind::text, .text = long_text})
+              .has_value(),
+          "Writing long Unicode text");
+  wait_for_calls(seeded + 4);
+  snapshot = hm_clipboard_snapshot(clipboard, &entries);
+  require(snapshot != nullptr && snapshot[0].text != nullptr &&
+              std::string(snapshot[0].text) == prefix,
+          "The bridge preview never splits a Unicode character");
+  const auto long_id = snapshot[0].id;
+  hm_clipboard_free_snapshot(snapshot, entries);
+  require(hm_clipboard_restore(clipboard, long_id),
+          "A long clipboard entry restores");
+  const auto complete = hm::read_pasteboard();
+  require(complete && complete->text == long_text,
+          "Preview truncation does not truncate the stored payload");
 
   hm_clipboard_clear(clipboard);
   require(hm_clipboard_snapshot(clipboard, &entries) == nullptr,

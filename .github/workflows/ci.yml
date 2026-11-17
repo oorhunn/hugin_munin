@@ -97,3 +97,35 @@ jobs:
         run: cmake --build build/${{ matrix.preset }} --target hm_tests
       - name: Test
         run: ctest --test-dir build/${{ matrix.preset }} --output-on-failure
+
+  coverage:
+    name: Core and bridge coverage
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure coverage
+        run: cmake --preset coverage
+      - name: Build instrumented C++ tests
+        run: cmake --build build/coverage --target hm_tests --parallel 2
+      - name: Test and generate coverage
+        run: python3 scripts/coverage.py
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          if [ -f build/coverage/coverage-report/summary.txt ]; then
+            echo '### Core and bridge coverage' >> "$GITHUB_STEP_SUMMARY"
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
+            cat build/coverage/coverage-report/summary.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-bridge-coverage
+          path: build/coverage/coverage-report/
+          if-no-files-found: error
+          retention-days: 14
