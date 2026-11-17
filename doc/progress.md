@@ -26,6 +26,47 @@ What has been accomplished, newest first.
   changes. All 11 tracked Swift sources pass; a deliberately invalid scratch source fails.
   The integrated Release build, all 11 tests and a ten-second launch smoke test pass on
   macOS 27.0.1; the hosted CI run remains unverified.
+- Resolved PR #18 merge conflicts with `main` in the decision and progress logs, preserving
+  both the Swift behavior test entries and the coordinator RAM exemption entries. Checked
+  the merged diff and conflict markers; no build or runtime tests were rerun for this
+  documentation-only conflict resolution.
+
+## 2026-11-14
+
+- Exempted this repository's own builds, jobs from agents registered with project `hugin_munin`,
+  from the coordinator's RAM-percentage limits, at the owner's request. The coordinator now keeps
+  a second pressure state with its own recovery hysteresis that ignores the 82% RAM rule, and
+  drops the "80% RAM minus current use" cap from those jobs' memory budget. Heartbeats only ask
+  them to yield for the remaining rules. Other projects are unchanged.
+  - Added `coordinator_test` cases at 88% RAM: another project waits and the own build runs.
+    Critical RAM, macOS warning pressure, and 85% CPU still hold or yield the own build.
+  - clang-format (Homebrew 23.1.5, not CI's 23.1.4) and clang-tidy on the changed files are
+    clean. Built with `-j 2` without a lease, since the old service would have queued it. 10 of
+    11 tests passed and the smoke test passed. `bridge_test` was skipped because it replaces the
+    system clipboard. Sanitizer presets and CI were not run.
+  - The running `hm-service` is still the old build. The change applies once `main` is rebuilt
+    and that service is restarted.
+
+- Issue #13: brought the Swift behavior tests to `main`. PR #9 had merged them into
+  `feature/resource-coordination-main` after #7 merged, so they never reached `main`, and they had
+  never been compiled. Applied that work on `09b0607` in branch `test/swift-behavior-main`.
+  - Added checks for modifier release (now `ClipboardPreviewSession.modifiersReleased`, shared by
+    the panel's flags handler and release timer), and for the real sampler and clipboard watcher:
+    repeated `start`/`stop`, no sample after `stop` returns, and both receivers released.
+  - Replaced the 1 ms polling loops with a 15-second deadline helper, and raised the CTest timeout
+    to 60 seconds.
+  - Built locally with `-j 2` and without a coordinator lease when the owner asked for the build, after
+    three lease requests stayed queued under constrained memory pressure for about 95 minutes.
+    The coordinator treats 82% RAM use as constrained, which this 16 GB Mac is at most of the time.
+  - 11 of 12 tests passed, `swift_behavior_test` among them. `bridge_test` was skipped locally
+    because it replaces the system clipboard while the owner's app was running. The smoke test
+    passed. Sanitizer presets, clang-tidy, and CI were not run.
+  - Broke ten tested behaviors one at a time, including Cmd+A recording, paste after a failed
+    restore, double paste, Escape, Control release, a leaked or unstopped sampler, shortcut
+    migration, injected defaults, and idle recording. The test failed for each, and passes again
+    with the code restored.
+  - Real focus, Carbon hot keys, Accessibility, paste delivery, full screen, drag and drop, and the
+    notch still need the manual checklists.
 
 ## 2026-11-09
 

@@ -11,7 +11,8 @@ working in this repository. `AGENTS.md` points here, so this file is the single 
 - `core/src/platform/<os>/`: one backend per OS.
 - `core/bridge/`: the C header the Swift UI uses to reach the core, and its implementation.
 - `ui/macos/`: the SwiftUI app. It builds to `build/HuginMunin.app`.
-- `tests/`: `metrics_test`, `sampler_test`, `disk_snapshot_test`, and `disk_tracker_test` need no
+- `tests/`: `swift_behavior_test` compiles production Swift sources without the app's windows.
+  `metrics_test`, `sampler_test`, `disk_snapshot_test`, and `disk_tracker_test` need no
   backend. `collectors_test`, `bridge_test`, and `disk_walk_test` read the live system.
 - `doc/`: `README.md` is the index, with the progress log, decisions, and a guide per topic.
 - `scripts/`: helpers used both locally and in CI.
@@ -26,10 +27,12 @@ ctest --test-dir build --output-on-failure
 open build/HuginMunin.app
 ```
 
-The tests cover the core and the C bridge, not the Swift UI. After changing `ui/macos/` or the
-bridge, launch the app and confirm it stays running, because a Swift concurrency error can pass
-every test and still crash the app on launch. `scripts/smoke_test.sh` does this check, and CI runs
-it too. CI has no notch, so notch behavior still needs a run on a real MacBook.
+The tests cover the core, C bridge, and Swift behavior (shortcut recording, clipboard preview,
+settings, and callback lifetimes). Real window focus and paste delivery still need manual checks.
+After changing `ui/macos/` or the bridge, launch the app and confirm it stays running, because a
+Swift concurrency error can pass every test and still crash the app on launch.
+`scripts/smoke_test.sh` does this check, and CI runs it too. CI has no notch, so notch behavior
+still needs a run on a real MacBook.
 
 Keep C++ formatted, because CI fails otherwise. See `doc/development.md` for the sanitizer presets
 and the format command, and `doc/ci-cd.md` for releases.
@@ -75,7 +78,8 @@ and the format command, and `doc/ci-cd.md` for releases.
 ## Agent resource coordination
 
 When the Hugin & Munin MCP server is configured, register with a name and project before heavy
-local work. Request a lease with CPU core equivalents, peak RAM bytes, a unique request key,
+local work. Use the project `hugin_munin` for this repository's builds, including with
+`hm-run --project hugin_munin`. Request a lease with CPU core equivalents, peak RAM bytes, a unique request key,
 a job title, and your application's duration estimate when available. A capacity read alone
 is not a reservation. Wait for `running`, then match build/test concurrency to the grant.
 
