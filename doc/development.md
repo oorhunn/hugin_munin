@@ -33,6 +33,9 @@ To quit the app, hover over the notch and click **Quit**.
 | `bridge_test` | Yes | The C interface, through the real backend and pasteboard |
 | `file_shelf_test` | No | Shelf bridge, path normalization, duplicate rejection, removal, and bounds |
 
+Clipboard persistence tests use fake pasteboards and deterministic blocked paths. See
+[Clipboard persistence](clipboard-persistence.md) for failure reporting and recovery behavior.
+
 Tests use the small `require` helper in `tests/check.hpp` rather than a framework.
 
 `bridge_test` temporarily replaces the clipboard's contents to exercise the copy/paste buffer,
@@ -75,8 +78,11 @@ git ls-files '*.cpp' '*.hpp' '*.h' '*.mm' | xargs clang-format --dry-run -Werror
 git ls-files '*.cpp' '*.hpp' '*.h' '*.mm' | xargs clang-format -i                 # fix
 ```
 
-Swift formatting is not checked yet. `third_party/.clang-format` turns formatting off for vendored
-code, so these commands leave it alone.
+Swift sources use pinned SwiftFormat 0.64.7 and SwiftLint 0.65.1. Run
+`scripts/swift_tools.sh check` to match CI, or `scripts/swift_tools.sh format` to fix layout.
+See [Swift tooling](swift-tooling.md) for versions and rule choices.
+
+`third_party/.clang-format` turns formatting off for vendored code.
 
 ## Linting
 
@@ -105,6 +111,9 @@ a build:
 ```sh
 vtool -show-build build/HuginMunin.app/Contents/MacOS/HuginMunin
 ```
+
+See [Compatibility and performance validation](validation.md) for the minimum-OS release
+checklist, opt-in clipboard benchmarks and process CPU/RSS sampling commands.
 
 ## Manual shelf checks
 

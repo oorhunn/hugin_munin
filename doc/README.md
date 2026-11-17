@@ -8,6 +8,9 @@ Start with the page that matches what you need.
 | [Resource coordination utilities](resource-coordination.md) | Connect MCP clients, register jobs, and run coordinated commands |
 | [Resource coordination plan](resource-coordination-plan.md) | Review the proposed MCP service, agent reservations, and responsiveness safeguards |
 | [Development](development.md) | Build, test, format, and run sanitizers locally |
+| [Clipboard persistence](clipboard-persistence.md) | Understand storage failure status, retries and recovery |
+| [Swift tooling](swift-tooling.md) | Run pinned Swift formatting and lint checks |
+| [Compatibility and performance](validation.md) | Reproduce minimum-OS checks and synthetic/full-app measurements |
 | [CI and releases](ci-cd.md) | Understand the checks on each change and publish a release |
 | [Decisions](decisions.md) | See what has been decided and why, and what is still open |
 | [Progress](progress.md) | See what has been accomplished, newest first |

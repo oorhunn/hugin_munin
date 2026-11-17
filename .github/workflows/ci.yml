@@ -27,6 +27,17 @@ jobs:
           git ls-files '*.cpp' '*.hpp' '*.h' '*.mm' |
           xargs pipx run --spec clang-format==23.1.4 clang-format --dry-run -Werror
 
+  swift:
+    name: Swift format and lint
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check Swift formatting and lint
+        run: scripts/swift_tools.sh check
+
   lint:
     name: Lint
     runs-on: macos-26
@@ -63,6 +74,8 @@ jobs:
         run: cmake --build build
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Check supported macOS metadata
+        run: python3 scripts/check_macos_compatibility.py build/HuginMunin.app
       - name: Launch the app
         run: scripts/smoke_test.sh build/HuginMunin.app
 

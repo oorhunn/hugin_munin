@@ -4,6 +4,7 @@
 
 #include "hm/pasteboard.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -162,6 +163,33 @@ private:
   std::optional<std::uint64_t> retry_;
 };
 
+// How a failed save or deletion is retried without anyone asking.
+struct ClipboardRetryPolicy {
+  // Automatic retries after the first failure. 0 turns them off. After that
+  // many, only a new change or `request_persistence_retry` tries again.
+  std::uint32_t max_automatic_retries = 5;
+  // Wait before the first retry; each later wait doubles, up to `max_delay`.
+  std::chrono::duration<double> first_delay{2.0};
+  std::chrono::duration<double> max_delay{60.0};
+};
+
+// What the history file is doing, without any path, error text, or content, so
+// it is safe to show or log anywhere.
+struct ClipboardPersistenceStatus {
+  // The newest changes are not in the history file because the last save
+  // failed. The history in memory is unaffected.
+  bool save_failed = false;
+  // A history file that should be gone has not been deleted yet: the old file
+  // after saving was turned off or moved, or the file after `clear`.
+  bool delete_failed = false;
+  // Another automatic retry is scheduled. A failure with no retry scheduled has
+  // used them all and waits for a new change or `request_persistence_retry`.
+  bool retry_scheduled = false;
+  // Changes every time the other fields do, so a caller can tell a new state
+  // from the one it already showed.
+  std::uint64_t generation = 0;
+};
+
 // Calls `on_change` on a background thread whenever the history changes because
 // of an external copy. Calls made by the UI itself (`set_capacity`, `restore`,
 // `clear`) do not notify, so the caller can refresh in its own way on its own
@@ -178,6 +206,14 @@ private:
 // With a history file, the watcher starts from what the file holds and saves
 // after each change on its own thread, and once more when it stops. `clear`
 // deletes the file straight away.
+//
+// Saving and deleting can fail. The history in memory stays usable, the failure
+// shows in `persistence_status`, and the watcher keeps the work pending: a
+// failed save keeps the history marked as unsaved, and a failed deletion keeps
+// the path to delete. Both are retried on the watcher's thread with a bounded,
+// backed-off schedule (`ClipboardRetryPolicy`), and again whenever a new change
+// arrives (saves) or `request_persistence_retry` is called (both). Nothing here
+// ever reports a deletion as done before the file is gone.
 class ClipboardWatcher {
 public:
   explicit ClipboardWatcher(
@@ -185,13 +221,24 @@ public:
       std::size_t capacity = clipboard_default_capacity,
       PasteboardSources sources = {},
       std::chrono::duration<double> poll_interval = clipboard_poll_interval,
-      const std::filesystem::path &history_file = {});
+      const std::filesystem::path &history_file = {},
+      ClipboardRetryPolicy retry_policy = {});
 
   void set_capacity(std::size_t capacity);
 
   // Starts saving to `file`. An empty path stops saving and deletes the file in
-  // use.
+  // use. Saving stops even when that deletion fails; the file is then kept as a
+  // pending deletion (`delete_failed`) and retried. Waits for a save that is
+  // running, so call it off the main thread.
   void set_history_file(std::filesystem::path file);
+
+  // Reads the current state without waiting for file access.
+  [[nodiscard]] ClipboardPersistenceStatus persistence_status() const;
+
+  // Asks the watcher's thread to try the pending save and deletions now, with a
+  // fresh retry budget. Returns at once; poll `persistence_status` for the
+  // outcome.
+  void request_persistence_retry();
 
   // Deep copy of the entries, newest first, safe against concurrent polls.
   std::vector<ClipboardEntry> snapshot() const;
@@ -210,16 +257,41 @@ public:
 private:
   void poll_pass();
   void keep_stack_position_in_bounds();
-  void save_if_dirty();
+  // Saves unsaved changes and retries pending deletions when they are due, or
+  // now when `force` is set.
+  void persist(bool force);
+  bool delete_pending(); // needs save_mutex_ held; true when nothing is left
+  bool save_current();   // needs save_mutex_ held; true when it saved
+  void note_attempt(bool ok);        // needs save_mutex_ held
+  void publish_status();             // needs save_mutex_ held
   bool write_back(std::uint64_t id); // needs mutex_ held
 
+  // Lock order: save_mutex_, then mutex_. status_mutex_ and wake_mutex_ are
+  // leaves, and no callback runs under any of them.
   mutable std::mutex mutex_;
   ClipboardHistory history_;
   ClipboardTracker tracker_;
   std::size_t stack_position_ = 0;
-  bool dirty_ = false;    // guarded by mutex_
+  // Counts every change the history file has to catch up with; guarded by
+  // mutex_.
+  std::uint64_t revision_ = 0;
   std::mutex save_mutex_; // taken before mutex_, held across file access
-  std::filesystem::path history_file_; // guarded by save_mutex_
+  // Everything below is guarded by save_mutex_.
+  std::filesystem::path history_file_;
+  std::uint64_t saved_revision_ = 0;  // what the file holds
+  std::uint64_t failed_revision_ = 0; // the revision the last failed save had
+  bool save_failed_ = false;
+  // The file in use must go because `clear` emptied the history; ends when it
+  // is deleted or a save replaces it.
+  bool active_file_stale_ = false;
+  std::vector<std::filesystem::path> pending_deletes_; // files no longer in use
+  std::uint32_t failures_ = 0;                         // in a row
+  std::chrono::steady_clock::time_point next_attempt_;
+  ClipboardPersistenceStatus published_; // mirrored to status_
+  ClipboardRetryPolicy retry_policy_;
+  mutable std::mutex status_mutex_;
+  ClipboardPersistenceStatus status_; // guarded by status_mutex_
+  std::atomic<bool> retry_requested_ = false;
   std::function<void()> on_change_;
   std::chrono::duration<double> poll_interval_;
   PasteboardSources sources_;

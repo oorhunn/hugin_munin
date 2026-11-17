@@ -82,9 +82,39 @@ hm_clipboard *hm_clipboard_start(hm_clipboard_callback callback, void *context,
 
 // Starts saving to `history_file`. NULL stops saving and deletes the file in
 // use. Returns false if the change could not be made, which leaves saving as it
-// was.
+// was. Returns true once saving has switched, even if deleting the old file
+// failed: that deletion stays pending and shows up in
+// hm_clipboard_persistence_state as `delete_failed`. May block behind a save in
+// progress and on file access, so call it off the main thread.
 bool hm_clipboard_set_history_file(hm_clipboard *clipboard,
                                    const char *history_file);
+
+// What the history file is doing. It holds no paths, error text, or clipboard
+// content. The history in memory stays usable whatever it says.
+typedef struct {
+  // The newest changes are not in the history file because the last save
+  // failed.
+  bool save_failed;
+  // A history file that should be gone is still there: the old file after
+  // saving was turned off or moved, or the file after hm_clipboard_clear.
+  bool delete_failed;
+  // Another automatic retry is scheduled. A failure with this false has used
+  // its automatic retries, and waits for a new copy or
+  // hm_clipboard_retry_persistence.
+  bool retry_scheduled;
+  // Changes every time the other fields do.
+  uint64_t generation;
+} hm_clipboard_persistence;
+
+// Reads the persistence state without waiting for file access, so it is safe on
+// the main thread. A NULL watcher gives all zeros.
+hm_clipboard_persistence
+hm_clipboard_persistence_state(const hm_clipboard *clipboard);
+
+// Asks the watcher to retry the pending save and deletions now, with a fresh
+// retry budget. Returns at once; read hm_clipboard_persistence_state for the
+// outcome. Does nothing when nothing is pending.
+void hm_clipboard_retry_persistence(hm_clipboard *clipboard);
 
 // Stops watching and frees `clipboard`. No callback runs after this returns.
 // Accepts NULL.
@@ -136,7 +166,9 @@ bool hm_clipboard_stack_restore(hm_clipboard *clipboard);
 void hm_clipboard_stack_remove(hm_clipboard *clipboard);
 
 // Empties the history and deletes its file, leaving the pasteboard alone. This
-// does not call the callback.
+// does not call the callback. The history is empty even when the file cannot be
+// deleted; that shows up as `delete_failed` in hm_clipboard_persistence_state
+// and is retried. May block on file access.
 void hm_clipboard_clear(hm_clipboard *clipboard);
 
 typedef struct {

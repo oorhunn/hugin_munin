@@ -25,6 +25,28 @@ private func receiveClipboardChange(_ context: UnsafeMutableRawPointer?) {
 final class ClipboardStore {
     private(set) var entries: [ClipboardItem] = []
     private(set) var position = 0
+    private(set) var persistenceError: String?
+    private(set) var persistenceRetryScheduled = false
+
+    /// Status contains no clipboard content or file paths. Settings refreshes it while visible.
+    func refreshPersistenceStatus() {
+        let state = hm_clipboard_persistence_state(clipboard)
+        persistenceRetryScheduled = state.retry_scheduled
+        if state.delete_failed, state.save_failed {
+            persistenceError = "History could not be saved or deleted. Copies remain in memory and an older copy may remain on disk."
+        } else if state.delete_failed {
+            persistenceError = "Saved history could not be deleted. A copy may remain on disk."
+        } else if state.save_failed {
+            persistenceError = "History could not be saved. Your copies are still available in memory."
+        } else {
+            persistenceError = nil
+        }
+    }
+
+    func retryPersistence() {
+        hm_clipboard_retry_persistence(clipboard)
+        refreshPersistenceStatus()
+    }
 
     var selectedItem: ClipboardItem? { entries.indices.contains(position) ? entries[position] : nil }
 
@@ -56,7 +78,11 @@ final class ClipboardStore {
 
     /// Starts saving to `file`, or stops saving and deletes the saved history when it is nil.
     func setHistoryFile(_ file: URL?) {
-        _ = withPath(file) { hm_clipboard_set_history_file(clipboard, $0) }
+        let accepted = withPath(file) { hm_clipboard_set_history_file(clipboard, $0) }
+        refreshPersistenceStatus()
+        if !accepted, persistenceError == nil {
+            persistenceError = "History storage could not be changed."
+        }
     }
 
     private func withPath<Result>(_ file: URL?, _ body: (UnsafePointer<CChar>?) -> Result) -> Result {
@@ -81,6 +107,7 @@ final class ClipboardStore {
     /// Reads one consistent snapshot from the core and turns it into display items.
     func reload() {
         guard let clipboard else { return }
+        refreshPersistenceStatus()
         position = hm_clipboard_stack_position(clipboard)
         var count = 0
         guard let snapshot = hm_clipboard_snapshot(clipboard, &count), count > 0 else {

@@ -34,6 +34,8 @@ jobs:
         run: cmake --build build
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Check supported macOS metadata
+        run: python3 scripts/check_macos_compatibility.py build/HuginMunin.app
       - name: Launch the app
         run: scripts/smoke_test.sh build/HuginMunin.app
       - name: Package

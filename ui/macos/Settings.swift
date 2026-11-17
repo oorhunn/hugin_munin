@@ -202,7 +202,20 @@ struct SettingsView: View {
                     Button("Clear History") { clipboard.clear() }
                         .disabled(clipboard.entries.isEmpty)
                 }
+                if let error = clipboard.persistenceError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                    HStack {
+                        if clipboard.persistenceRetryScheduled {
+                            Text("Retrying automatically…").font(.caption)
+                        }
+                        Button("Retry History Storage") { clipboard.retryPersistence() }
+                    }
+                }
             }
+        }
+        .onAppear { clipboard.refreshPersistenceStatus() }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            clipboard.refreshPersistenceStatus()
         }
         .pickerStyle(.segmented)
         .padding(20)
