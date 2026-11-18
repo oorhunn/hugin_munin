@@ -10,8 +10,10 @@ demand.
 | Job | Runner | What it does |
 | --- | --- | --- |
 | Format | `ubuntu-24.04` | Checks C++ and Objective-C++ with clang-format 23.1.4 |
+| Swift format and lint | `macos-26` | Checks tracked Swift files with pinned SwiftFormat and SwiftLint |
 | Lint | `macos-26` | Checks C++ with clang-tidy 23.1.4, and fails on any warning |
-| Build and test | `macos-26` | Builds the app and tests in Debug and Release, runs the tests, and launches the app |
+| Build and test | `macos-26` | Builds the app and tests in Debug and Release, runs the tests, checks minimum-OS metadata, and launches the app |
+| Core and bridge coverage | `macos-26` | Runs instrumented C++/Objective-C++ tests, posts a summary and uploads HTML/JSON coverage |
 | Sanitizers | `macos-26` | Runs the tests under ASan with UBSan, and under TSan |
 
 To reproduce a failure, run the same commands from [Development](development.md).
@@ -33,10 +35,15 @@ To reproduce a failure, run the same commands from [Development](development.md)
   `macos-26` forward by hand.
 - When the Ubuntu backend arrives, add a matching job.
 
+See [Compatibility and performance validation](validation.md) for the executable macOS 14
+release checklist and performance workloads. CI metadata checks cannot establish older-OS
+runtime behavior. Synthetic core measurements and controlled full-app measurements are recorded
+separately; no performance gate has been established yet.
+
 ## Releases
 
 [`release.yml`](../.github/workflows/release.yml) runs when a tag such as `v0.2.0` is pushed. It
-checks that the tag matches the version in `CMakeLists.txt`, repeats the build, test, and launch
+checks that the tag matches the version in `CMakeLists.txt`, checks minimum-OS metadata, repeats the build, test, and launch
 steps in Release, and then publishes a GitHub prerelease with the zipped app and its SHA-256 sum.
 
 To publish a release:

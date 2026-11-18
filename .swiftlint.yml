@@ -1,0 +1,27 @@
+# A small set of rules that point at likely bugs or dead code. Layout and style belong to
+# SwiftFormat (.swiftformat), so no rule here duplicates it.
+included:
+  - ui/macos
+
+only_rules:
+  - class_delegate_protocol
+  - compiler_protocol_init
+  - discarded_notification_center_observer
+  - duplicate_conditions
+  - duplicate_enum_cases
+  - empty_count
+  - force_cast
+  - force_try
+  - invalid_swiftlint_command
+  - legacy_multiple
+  - no_fallthrough_only
+  - notification_center_detachment
+  - redundant_nil_coalescing
+  - unavailable_function
+  - unneeded_override
+  - unused_closure_parameter
+  - unused_enumerated
+  - unused_optional_binding
+  - unused_setter_value
+  - valid_ibinspectable
+  - xctfail_message

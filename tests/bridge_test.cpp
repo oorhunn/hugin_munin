@@ -1,5 +1,6 @@
 // The C interface the Swift UI uses, against the live system.
 #include "check.hpp"
+#include "hm/clipboard.hpp"
 #include "hm/pasteboard.hpp"
 #include "hm_bridge.h"
 
@@ -26,6 +27,87 @@ void receive(const hm_sample *sample, void *context)
   auto *received = static_cast<Received *>(context);
   received->last = *sample;
   ++received->calls;
+}
+
+// Persistence failures cross the C interface as plain flags. The watcher is
+// started without a history file and pointed at paths that fail on purpose, so
+// the live pasteboard decides nothing here.
+void clipboard_persistence()
+{
+  namespace fs = std::filesystem;
+  const auto none = hm_clipboard_persistence_state(nullptr);
+  require(!none.save_failed && !none.delete_failed && !none.retry_scheduled &&
+              none.generation == 0,
+          "The persistence state of a missing watcher is empty");
+  hm_clipboard_retry_persistence(nullptr);
+
+  const auto folder =
+      fs::temp_directory_path() /
+      ("hm-bridge-persistence-" +
+       std::to_string(
+           std::chrono::steady_clock::now().time_since_epoch().count()));
+  fs::create_directories(folder);
+  const auto wait_until = [](auto condition) {
+    for (int i = 0; i < 500 && !condition(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    return condition();
+  };
+
+  auto *clipboard = hm_clipboard_start([](void *) {}, nullptr, 3, nullptr);
+  require(clipboard != nullptr, "The clipboard watcher starts for persistence");
+  const auto quiet = hm_clipboard_persistence_state(clipboard);
+  require(!quiet.save_failed && !quiet.delete_failed,
+          "A watcher without a history file has nothing to report");
+
+  // A history file below a regular file cannot be created.
+  const auto blocker = folder / "blocker";
+  std::ofstream(blocker) << "not a folder";
+  const auto blocked = (blocker / "history.bin").string();
+  require(hm_clipboard_set_history_file(clipboard, blocked.c_str()),
+          "Switching saving on succeeds even when saving will fail");
+  require(wait_until([&] {
+            return hm_clipboard_persistence_state(clipboard).save_failed;
+          }),
+          "A failed save is visible through the bridge");
+  const auto failed = hm_clipboard_persistence_state(clipboard);
+  require(!failed.delete_failed && failed.generation > 0,
+          "A failed save is not a failed deletion");
+
+  fs::remove(blocker);
+  fs::create_directory(blocker);
+  hm_clipboard_retry_persistence(clipboard);
+  require(wait_until([&] {
+            return !hm_clipboard_persistence_state(clipboard).save_failed;
+          }),
+          "An explicit retry recovers through the bridge");
+  require(hm_clipboard_persistence_state(clipboard).generation >
+                  failed.generation &&
+              fs::exists(blocker / "history.bin"),
+          "The retried save wrote the file");
+
+  // A folder that is not empty cannot be deleted as a file.
+  const auto stuck = folder / "stuck";
+  fs::create_directories(stuck);
+  std::ofstream(stuck / "keep") << "x";
+  require(hm_clipboard_set_history_file(clipboard, stuck.string().c_str()),
+          "Switching to another history path succeeds");
+  require(hm_clipboard_set_history_file(clipboard, nullptr),
+          "Turning saving off succeeds even when the deletion fails");
+  require(hm_clipboard_persistence_state(clipboard).delete_failed,
+          "A failed deletion is visible through the bridge");
+  require(fs::exists(stuck / "keep"), "The file that could not go remains");
+
+  fs::remove(stuck / "keep");
+  hm_clipboard_retry_persistence(clipboard);
+  require(wait_until([&] {
+            return !hm_clipboard_persistence_state(clipboard).delete_failed;
+          }),
+          "A retry finishes the deletion through the bridge");
+  require(!fs::exists(stuck), "The pending deletion happened");
+
+  hm_clipboard_stop(clipboard);
+  std::error_code ignored;
+  fs::remove_all(folder, ignored);
 }
 
 // The clipboard watcher against the live pasteboard. These checks replace the
@@ -128,6 +210,27 @@ void clipboard_round_trip()
               std::memcmp(snapshot[0].image, pixels.data(), pixels.size()) == 0,
           "Image bytes cross the bridge untouched");
   hm_clipboard_free_snapshot(snapshot, entries);
+
+  // The byte limit lands inside a four-byte UTF-8 character. The preview must
+  // end before that character while restore retains the complete payload.
+  const std::string prefix(hm::clipboard_preview_bytes - 1, 'x');
+  const std::string long_text = prefix + "🙂tail";
+  require(hm::write_pasteboard(
+              {.kind = hm::ClipboardContent::Kind::text, .text = long_text})
+              .has_value(),
+          "Writing long Unicode text");
+  wait_for_calls(seeded + 4);
+  snapshot = hm_clipboard_snapshot(clipboard, &entries);
+  require(snapshot != nullptr && snapshot[0].text != nullptr &&
+              std::string(snapshot[0].text) == prefix,
+          "The bridge preview never splits a Unicode character");
+  const auto long_id = snapshot[0].id;
+  hm_clipboard_free_snapshot(snapshot, entries);
+  require(hm_clipboard_restore(clipboard, long_id),
+          "A long clipboard entry restores");
+  const auto complete = hm::read_pasteboard();
+  require(complete && complete->text == long_text,
+          "Preview truncation does not truncate the stored payload");
 
   hm_clipboard_clear(clipboard);
   require(hm_clipboard_snapshot(clipboard, &entries) == nullptr,
@@ -264,6 +367,7 @@ int main()
   require(received.calls == calls, "No callback after stop");
 
   clipboard_round_trip();
+  clipboard_persistence();
   // Last, because it moves HOME and the sampler above needs the real service.
   test_disk_tracker();
   return 0;

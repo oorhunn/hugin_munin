@@ -10,6 +10,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace std::chrono_literals;
 
@@ -328,6 +329,23 @@ void history_file()
               std::chrono::floor<std::chrono::milliseconds>(now),
           "The capture time survives");
 
+  // A destination directory deterministically rejects atomic replacement, even
+  // when tests run as root. The failed save must clean up its temporary file.
+  const auto blocked = folder / "blocked.bin";
+  fs::create_directories(blocked / "keep");
+  require(!hm::save_clipboard_history(blocked, entries),
+          "A failed atomic replacement is reported");
+  require(fs::exists(blocked / "keep") &&
+              !fs::exists(blocked.string() + ".tmp"),
+          "A failed replacement preserves the destination and cleans temporary "
+          "data");
+  fs::remove_all(blocked);
+  require(hm::save_clipboard_history(blocked, entries).has_value(),
+          "Saving recovers after the destination is writable");
+  const auto recovered = hm::load_clipboard_history(blocked);
+  require(recovered && recovered->size() == entries.size(),
+          "The recovered save retains every entry");
+
   const auto size = fs::file_size(file);
   fs::resize_file(file, size - 1);
   require(!hm::load_clipboard_history(file), "A cut-off file is an error");
@@ -433,6 +451,391 @@ void watcher_thread()
   require(watcher.snapshot().empty(), "Clear empties the watcher's history");
 }
 
+// Polls `condition` for up to a few seconds; the watcher's thread does the
+// work.
+template <typename Condition>
+bool wait_until(Condition condition, int milliseconds = 4000)
+{
+  for (int waited = 0; waited < milliseconds; waited += 5) {
+    if (condition())
+      return true;
+    std::this_thread::sleep_for(5ms);
+  }
+  return condition();
+}
+
+// A folder that is removed when it goes out of scope.
+struct TempFolder {
+  std::filesystem::path path;
+
+  explicit TempFolder(const std::string &name)
+      : path(std::filesystem::temp_directory_path() /
+             ("hm-clipboard-" + name + "-" +
+              std::to_string(
+                  std::chrono::steady_clock::now().time_since_epoch().count())))
+  {
+    std::filesystem::create_directories(path);
+  }
+  ~TempFolder()
+  {
+    std::error_code ignored;
+    std::filesystem::remove_all(path, ignored);
+  }
+  TempFolder(const TempFolder &) = delete;
+  TempFolder &operator=(const TempFolder &) = delete;
+};
+
+// Retries that run out within a few milliseconds.
+constexpr hm::ClipboardRetryPolicy quick_retries{
+    .max_automatic_retries = 3, .first_delay = 2ms, .max_delay = 10ms};
+// Retries that effectively never run out.
+constexpr hm::ClipboardRetryPolicy endless_retries{
+    .max_automatic_retries = 1000000, .first_delay = 2ms, .max_delay = 5ms};
+
+// A history file below a regular file cannot be created, whatever the user or
+// permissions: the parent is not a folder. Replacing the blocker with a folder
+// is the "fix".
+struct BlockedPath {
+  std::filesystem::path blocker;
+  std::filesystem::path file;
+
+  explicit BlockedPath(const TempFolder &folder)
+      : blocker(folder.path / "blocker"), file(blocker / "history.bin")
+  {
+    std::ofstream(blocker) << "not a folder";
+  }
+  void fix() const
+  {
+    std::filesystem::remove(blocker);
+    std::filesystem::create_directory(blocker);
+  }
+};
+
+std::vector<std::string>
+texts_of(const std::vector<hm::ClipboardEntry> &entries)
+{
+  std::vector<std::string> texts;
+  texts.reserve(entries.size());
+  for (const auto &entry : entries)
+    texts.push_back(entry.content.text);
+  return texts;
+}
+
+void persistence_save_failure()
+{
+  namespace fs = std::filesystem;
+  TempFolder folder("save-failure");
+  const BlockedPath blocked(folder);
+  FakePasteboard pasteboard;
+  pasteboard.copy(1, text("one"));
+  std::atomic<int> changes = 0;
+
+  hm::ClipboardPersistenceStatus failed;
+  {
+    hm::ClipboardWatcher watcher([&changes] { ++changes; }, 10,
+                                 pasteboard.sources(), 5ms, blocked.file,
+                                 quick_retries);
+    wait_for_changes(changes, 1);
+    require(
+        wait_until([&] { return watcher.persistence_status().save_failed; }),
+        "A save that cannot create its file is reported");
+    require(wait_until(
+                [&] { return !watcher.persistence_status().retry_scheduled; }),
+            "Automatic retries are bounded");
+    failed = watcher.persistence_status();
+    require(failed.save_failed && !failed.delete_failed &&
+                !failed.retry_scheduled,
+            "An exhausted save failure asks for an explicit retry");
+
+    // The history in memory is still usable.
+    const auto snapshot = watcher.snapshot();
+    require(snapshot.size() == 1 && watcher.restore(snapshot.front().id) &&
+                pasteboard.written().back().text == "one",
+            "The history stays usable while saving fails");
+
+    // Nothing changes by itself once the retries are spent, even after the
+    // cause is gone.
+    blocked.fix();
+    std::this_thread::sleep_for(100ms);
+    require(!fs::exists(blocked.file) &&
+                watcher.persistence_status().generation == failed.generation &&
+                watcher.persistence_status().save_failed,
+            "Spent retries do not run again on their own");
+
+    // Recovery with no new entry: an explicit retry saves what was kept.
+    watcher.request_persistence_retry();
+    require(
+        wait_until([&] { return !watcher.persistence_status().save_failed; }),
+        "An explicit retry recovers without a new entry");
+    const auto recovered = watcher.persistence_status();
+    require(!recovered.save_failed && !recovered.delete_failed &&
+                !recovered.retry_scheduled &&
+                recovered.generation > failed.generation,
+            "A successful retry clears the status");
+    const auto saved = hm::load_clipboard_history(blocked.file);
+    require(saved && texts_of(*saved) == std::vector<std::string>{"one"},
+            "The retried save holds the history");
+    require(changes.load() == 1, "Retrying does not notify");
+  }
+}
+
+void persistence_automatic_retry()
+{
+  TempFolder folder("auto-retry");
+  const BlockedPath blocked(folder);
+  FakePasteboard pasteboard;
+  pasteboard.copy(1, text("one"));
+  std::atomic<int> changes = 0;
+  hm::ClipboardWatcher watcher([&changes] { ++changes; }, 10,
+                               pasteboard.sources(), 5ms, blocked.file,
+                               endless_retries);
+  wait_for_changes(changes, 1);
+  require(wait_until([&] { return watcher.persistence_status().save_failed; }),
+          "The failure shows while retries remain");
+  require(watcher.persistence_status().retry_scheduled,
+          "A failure with retries left says one is scheduled");
+
+  blocked.fix();
+  require(wait_until([&] { return !watcher.persistence_status().save_failed; }),
+          "A scheduled retry recovers without a new entry or a request");
+  require(!watcher.persistence_status().retry_scheduled &&
+              hm::load_clipboard_history(blocked.file).has_value() &&
+              changes.load() == 1,
+          "Recovery leaves nothing scheduled");
+}
+
+void persistence_new_entry_retries()
+{
+  namespace fs = std::filesystem;
+  TempFolder folder("new-entry");
+  const BlockedPath blocked(folder);
+  FakePasteboard pasteboard;
+  pasteboard.copy(1, text("one"));
+  std::atomic<int> changes = 0;
+  hm::ClipboardWatcher watcher([&changes] { ++changes; }, 10,
+                               pasteboard.sources(), 5ms, blocked.file,
+                               quick_retries);
+  wait_for_changes(changes, 1);
+  require(wait_until([&] {
+            const auto status = watcher.persistence_status();
+            return status.save_failed && !status.retry_scheduled;
+          }),
+          "The retries are spent");
+
+  blocked.fix();
+  pasteboard.copy(2, text("two"));
+  wait_for_changes(changes, 2);
+  require(wait_until([&] { return !watcher.persistence_status().save_failed; }),
+          "A new entry gets a fresh try after the retries ran out");
+  const auto saved = hm::load_clipboard_history(blocked.file);
+  require(saved && texts_of(*saved) == std::vector<std::string>{"two", "one"},
+          "The file holds the entry that failed to save and the new one");
+  require(fs::exists(blocked.file), "The history file exists");
+}
+
+void persistence_stop_tries_once_more()
+{
+  namespace fs = std::filesystem;
+  TempFolder folder("stop");
+  const BlockedPath blocked(folder);
+  FakePasteboard pasteboard;
+  pasteboard.copy(1, text("one"));
+  std::atomic<int> changes = 0;
+  {
+    hm::ClipboardWatcher watcher([&changes] { ++changes; }, 10,
+                                 pasteboard.sources(), 5ms, blocked.file,
+                                 quick_retries);
+    wait_for_changes(changes, 1);
+    require(wait_until([&] {
+              const auto status = watcher.persistence_status();
+              return status.save_failed && !status.retry_scheduled;
+            }),
+            "The retries are spent");
+    blocked.fix();
+    std::this_thread::sleep_for(100ms);
+    require(!fs::exists(blocked.file), "Nothing saved yet");
+  }
+  const auto saved = hm::load_clipboard_history(blocked.file);
+  require(saved && texts_of(*saved) == std::vector<std::string>{"one"},
+          "Stopping tries the unsaved history once more");
+}
+
+void persistence_switching_after_failure()
+{
+  namespace fs = std::filesystem;
+  TempFolder folder("switch");
+  const BlockedPath blocked(folder);
+  const auto good = folder.path / "good" / "history.bin";
+  FakePasteboard pasteboard;
+  pasteboard.copy(1, text("one"));
+  std::atomic<int> changes = 0;
+  hm::ClipboardWatcher watcher([&changes] { ++changes; }, 10,
+                               pasteboard.sources(), 5ms, blocked.file,
+                               quick_retries);
+  wait_for_changes(changes, 1);
+  require(wait_until([&] {
+            const auto status = watcher.persistence_status();
+            return status.save_failed && !status.retry_scheduled;
+          }),
+          "The retries are spent");
+
+  watcher.set_history_file(good);
+  require(wait_until([&] { return fs::exists(good); }) && wait_until([&] {
+            return !watcher.persistence_status().save_failed;
+          }),
+          "A new history file starts with a fresh try");
+  const auto status = watcher.persistence_status();
+  require(!status.save_failed && !status.delete_failed &&
+              !status.retry_scheduled,
+          "A file that never existed is not a failed deletion");
+
+  // Turning saving off after a failed save has nothing to delete.
+  watcher.set_history_file(blocked.file);
+  require(wait_until([&] { return watcher.persistence_status().save_failed; }),
+          "Saving to the blocked path fails again");
+  watcher.set_history_file({});
+  const auto off = watcher.persistence_status();
+  require(!off.save_failed && !off.delete_failed && !off.retry_scheduled,
+          "Turning saving off clears a failed save");
+  require(!fs::exists(good), "Moving away from a file deletes it");
+}
+
+void persistence_delete_failure()
+{
+  namespace fs = std::filesystem;
+  TempFolder folder("delete-failure");
+  // A folder that still holds something cannot be removed as a file.
+  const auto stuck = folder.path / "stuck";
+  fs::create_directories(stuck);
+  std::ofstream(stuck / "keep") << "x";
+
+  FakePasteboard pasteboard;
+  pasteboard.copy(1, text("one"));
+  std::atomic<int> changes = 0;
+  hm::ClipboardWatcher watcher([&changes] { ++changes; }, 10,
+                               pasteboard.sources(), 5ms, {}, quick_retries);
+  wait_for_changes(changes, 1);
+  require(watcher.persistence_status().generation == 0 &&
+              !watcher.persistence_status().save_failed,
+          "A memory-only watcher has nothing to report");
+
+  watcher.set_history_file(stuck);
+  watcher.set_history_file({});
+  const auto failed = watcher.persistence_status();
+  require(failed.delete_failed && !failed.save_failed,
+          "A deletion that fails is reported, not claimed");
+  require(fs::exists(stuck / "keep"),
+          "The file that could not go is still there");
+  require(
+      wait_until([&] { return !watcher.persistence_status().retry_scheduled; }),
+      "Deletion retries are bounded");
+  require(watcher.persistence_status().delete_failed,
+          "A spent deletion retry still reports the leftover file");
+
+  // Saving stays off while the deletion is pending.
+  pasteboard.copy(2, text("two"));
+  wait_for_changes(changes, 2);
+  std::this_thread::sleep_for(100ms);
+  require(fs::exists(stuck / "keep") && !fs::exists(stuck.string() + ".tmp") &&
+              !watcher.persistence_status().save_failed,
+          "A failed disable does not resume saving");
+
+  // The retry target survived: once the obstacle is gone, a retry finishes it.
+  fs::remove(stuck / "keep");
+  const auto before = watcher.persistence_status().generation;
+  watcher.request_persistence_retry();
+  require(
+      wait_until([&] { return !watcher.persistence_status().delete_failed; }),
+      "A retry finishes the pending deletion");
+  require(!fs::exists(stuck), "The pending file is deleted");
+  const auto cleared = watcher.persistence_status();
+  require(!cleared.save_failed && !cleared.retry_scheduled &&
+              cleared.generation > before,
+          "A finished deletion clears the status");
+
+  pasteboard.copy(3, text("three"));
+  wait_for_changes(changes, 3);
+  std::this_thread::sleep_for(100ms);
+  require(!fs::exists(stuck), "Saving stayed off after the deletion");
+}
+
+void persistence_clear_failure()
+{
+  namespace fs = std::filesystem;
+  TempFolder folder("clear-failure");
+  const auto file = folder.path / "history.bin";
+  FakePasteboard pasteboard;
+  pasteboard.copy(1, text("one"));
+  std::atomic<int> changes = 0;
+  hm::ClipboardWatcher watcher([&changes] { ++changes; }, 10,
+                               pasteboard.sources(), 5ms, file, quick_retries);
+  wait_for_changes(changes, 1);
+  require(wait_until([&] { return fs::exists(file); }),
+          "The history file exists before clearing");
+
+  // Swap the file for a folder that still holds something.
+  fs::remove(file);
+  fs::create_directories(file / "keep");
+  watcher.clear();
+  require(watcher.snapshot().empty(), "Clear empties the history regardless");
+  const auto failed = watcher.persistence_status();
+  require(failed.delete_failed && !failed.save_failed && fs::exists(file),
+          "Clear does not claim a deletion that failed");
+
+  fs::remove_all(file / "keep");
+  watcher.request_persistence_retry();
+  require(
+      wait_until([&] { return !watcher.persistence_status().delete_failed; }),
+      "A retry finishes the deletion after clear");
+  require(!fs::exists(file), "The history file is gone");
+
+  // Saving carried on: the next copy writes the file again.
+  pasteboard.copy(2, text("two"));
+  require(wait_until([&] { return fs::exists(file); }),
+          "Saving continues after a clear");
+  const auto saved = hm::load_clipboard_history(file);
+  require(saved && texts_of(*saved) == std::vector<std::string>{"two"},
+          "Only the new history is saved after a clear");
+  require(!watcher.persistence_status().delete_failed,
+          "A later save leaves no deletion pending");
+}
+
+// Copies arrive while saves run, and settings change on another thread.
+// Whatever the interleaving, the file must end up matching the history.
+void persistence_concurrent_changes()
+{
+  TempFolder folder("concurrent");
+  const auto file = folder.path / "history.bin";
+  FakePasteboard pasteboard;
+  std::vector<std::string> final_texts;
+  {
+    hm::ClipboardWatcher watcher(nullptr, 500, pasteboard.sources(), 1ms, file);
+    std::atomic<bool> done = false;
+    std::thread settings([&] {
+      for (std::size_t round = 0; !done; ++round) {
+        watcher.set_capacity(450 + round % 50);
+        (void)watcher.persistence_status();
+        std::this_thread::sleep_for(1ms);
+      }
+    });
+    for (std::uint64_t i = 1; i <= 200; ++i) {
+      pasteboard.copy(i, text("copy " + std::to_string(i)));
+      std::this_thread::sleep_for(2ms);
+    }
+    const bool settled = wait_until([&] {
+      const auto snapshot = watcher.snapshot();
+      return !snapshot.empty() && snapshot.front().content.text == "copy 200";
+    });
+    done = true;
+    settings.join();
+    require(settled, "The watcher saw the last copy");
+    final_texts = texts_of(watcher.snapshot());
+  }
+  const auto saved = hm::load_clipboard_history(file);
+  require(saved && texts_of(*saved) == final_texts,
+          "Changes made during saves are not lost");
+}
+
 } // namespace
 
 int main()
@@ -445,5 +848,13 @@ int main()
   watcher_stack();
   history_file();
   watcher_thread();
+  persistence_save_failure();
+  persistence_automatic_retry();
+  persistence_new_entry_retries();
+  persistence_stop_tries_once_more();
+  persistence_switching_after_failure();
+  persistence_delete_failure();
+  persistence_clear_failure();
+  persistence_concurrent_changes();
   return 0;
 }

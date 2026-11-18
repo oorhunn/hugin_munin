@@ -118,14 +118,14 @@ struct DiskView: View {
             Image(systemName: "internaldrive").font(.largeTitle).foregroundStyle(.secondary)
             Text("No scans yet").font(.title3.weight(.semibold))
             Text("""
-                A scan records the size of your folders. Each scan after that shows what grew. \
-                Scans then repeat every 6 hours while the app runs. macOS may ask for access to \
-                some folders.
-                """)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 400)
+            A scan records the size of your folders. Each scan after that shows what grew. \
+            Scans then repeat every 6 hours while the app runs. macOS may ask for access to \
+            some folders.
+            """)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 400)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

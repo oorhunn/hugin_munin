@@ -1,0 +1,10 @@
+--swift-version 6
+--indent 4
+--ranges no-space
+--trailing-commas never
+--header ignore
+
+# Layout choices that the existing sources already make on purpose: short bodies stay on one line,
+# wrapped arguments are kept as written, and explicit `self` stays where it is. The rules that
+# rewrite semantics (unusedArguments, redundantSelf) are left to the compiler and review.
+--disable wrap,wrapArguments,wrapIfStatementBodies,wrapPropertyBodies,wrapFunctionBodies,wrapSwitchCases,wrapMultilineStatementBraces,unusedArguments,redundantSelf,numberFormatting,docComments,andOperator

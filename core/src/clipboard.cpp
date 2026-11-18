@@ -28,6 +28,22 @@ template <typename T> bool get(std::istream &in, T &value)
       in.read(reinterpret_cast<char *>(&value), sizeof(value)));
 }
 
+// True when `file` and its temporary sibling are gone. A path that never
+// existed counts as gone, including one below something that is not a folder.
+bool remove_history_file(const std::filesystem::path &file)
+{
+  const auto removed = [](const std::filesystem::path &path) {
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    return !error || error == std::errc::not_a_directory;
+  };
+  auto temporary = file;
+  temporary += ".tmp";
+  const bool file_gone = removed(file);
+  const bool temporary_gone = removed(temporary);
+  return file_gone && temporary_gone;
+}
+
 ClipboardHistory opened_history(std::size_t capacity,
                                 const std::filesystem::path &file)
 {
@@ -296,18 +312,20 @@ ClipboardWatcher::ClipboardWatcher(std::function<void()> on_change,
                                    std::size_t capacity,
                                    PasteboardSources sources,
                                    std::chrono::duration<double> poll_interval,
-                                   const std::filesystem::path &history_file)
+                                   const std::filesystem::path &history_file,
+                                   ClipboardRetryPolicy retry_policy)
     : history_(opened_history(capacity, history_file)),
       tracker_(history_, sources), history_file_(history_file),
-      on_change_(std::move(on_change)), poll_interval_(poll_interval),
-      sources_(std::move(sources)),
+      retry_policy_(retry_policy), on_change_(std::move(on_change)),
+      poll_interval_(poll_interval), sources_(std::move(sources)),
       worker_([this](const std::stop_token &stop) {
         while (!stop.stop_requested()) {
           poll_pass();
           std::unique_lock lock(wake_mutex_);
-          wakeup_.wait_for(lock, stop, poll_interval_, [] { return false; });
+          wakeup_.wait_for(lock, stop, poll_interval_,
+                           [this] { return retry_requested_.load(); });
         }
-        save_if_dirty();
+        persist(true); // one last try, whatever the schedule says
       })
 {
 }
@@ -320,42 +338,142 @@ void ClipboardWatcher::poll_pass()
     changed = tracker_.poll();
     if (changed) {
       stack_position_ = 0;
-      dirty_ = true;
+      ++revision_;
     }
   }
   if (changed && on_change_)
     on_change_(); // outside the lock, so the callback may call back in
-  save_if_dirty();
+  persist(retry_requested_.exchange(false));
 }
 
-void ClipboardWatcher::save_if_dirty()
+void ClipboardWatcher::persist(bool force)
 {
   const std::scoped_lock save_lock(save_mutex_);
-  std::vector<ClipboardEntry> entries;
+  std::uint64_t revision = 0;
   {
     const std::scoped_lock lock(mutex_);
-    if (!dirty_ || history_file_.empty())
-      return;
-    dirty_ = false;
+    revision = revision_;
+  }
+  const bool unsaved = !history_file_.empty() && revision != saved_revision_;
+  if (!unsaved && pending_deletes_.empty() && !active_file_stale_)
+    return;
+  // A change the failed save has not seen gets a fresh budget at once. The
+  // schedule only covers retrying the same state, because each try can copy the
+  // whole history.
+  if (force || (unsaved && revision != failed_revision_))
+    failures_ = 0;
+  const bool due =
+      failures_ == 0 || (failures_ <= retry_policy_.max_automatic_retries &&
+                         std::chrono::steady_clock::now() >= next_attempt_);
+  if (!due)
+    return;
+  delete_pending();
+  if (unsaved)
+    save_current();
+  note_attempt(!save_failed_ && pending_deletes_.empty() &&
+               !active_file_stale_);
+  publish_status();
+}
+
+bool ClipboardWatcher::delete_pending()
+{
+  std::erase_if(pending_deletes_, remove_history_file);
+  if (active_file_stale_ && remove_history_file(history_file_))
+    active_file_stale_ = false;
+  return pending_deletes_.empty() && !active_file_stale_;
+}
+
+bool ClipboardWatcher::save_current()
+{
+  std::vector<ClipboardEntry> entries;
+  std::uint64_t revision = 0;
+  {
+    const std::scoped_lock lock(mutex_);
+    revision = revision_;
     entries = history_.entries();
   }
-  // A failed save is retried with the next change rather than on every poll,
-  // because each try can copy the whole history. The history in memory is still
-  // good.
-  [[maybe_unused]] const auto saved =
-      save_clipboard_history(history_file_, entries);
+  // Changes made while this writes bump revision_ past `revision`, so the
+  // history stays unsaved and the next pass picks them up.
+  if (save_clipboard_history(history_file_, entries)) {
+    saved_revision_ = revision;
+    save_failed_ = false;
+    active_file_stale_ = false; // the save replaced whatever `clear` left
+    return true;
+  }
+  failed_revision_ = revision;
+  save_failed_ = true;
+  return false;
+}
+
+void ClipboardWatcher::note_attempt(bool ok)
+{
+  if (ok) {
+    failures_ = 0;
+    return;
+  }
+  ++failures_;
+  const auto exponent = std::min<std::uint32_t>(failures_ - 1, 20);
+  const auto delay = std::min(retry_policy_.first_delay * (1U << exponent),
+                              retry_policy_.max_delay);
+  next_attempt_ =
+      std::chrono::steady_clock::now() +
+      std::chrono::duration_cast<std::chrono::steady_clock::duration>(delay);
+}
+
+void ClipboardWatcher::publish_status()
+{
+  ClipboardPersistenceStatus next;
+  next.save_failed = save_failed_;
+  next.delete_failed = !pending_deletes_.empty() || active_file_stale_;
+  next.retry_scheduled = (next.save_failed || next.delete_failed) &&
+                         failures_ <= retry_policy_.max_automatic_retries;
+  if (next.save_failed == published_.save_failed &&
+      next.delete_failed == published_.delete_failed &&
+      next.retry_scheduled == published_.retry_scheduled)
+    return;
+  next.generation = published_.generation + 1;
+  published_ = next;
+  const std::scoped_lock lock(status_mutex_);
+  status_ = next;
+}
+
+ClipboardPersistenceStatus ClipboardWatcher::persistence_status() const
+{
+  const std::scoped_lock lock(status_mutex_);
+  return status_;
+}
+
+void ClipboardWatcher::request_persistence_retry()
+{
+  {
+    const std::scoped_lock lock(wake_mutex_);
+    retry_requested_ = true;
+  }
+  wakeup_.notify_all();
 }
 
 void ClipboardWatcher::set_history_file(std::filesystem::path file)
 {
   const std::scoped_lock save_lock(save_mutex_);
-  if (!history_file_.empty() && history_file_ != file) {
-    std::error_code ignored;
-    std::filesystem::remove(history_file_, ignored);
-  }
+  if (!history_file_.empty() && history_file_ != file &&
+      std::ranges::find(pending_deletes_, history_file_) ==
+          pending_deletes_.end())
+    pending_deletes_.push_back(history_file_);
+  if (history_file_ != file)
+    active_file_stale_ = false; // its path is pending above if it matters
+  // A file that is in use again is rewritten, not deleted.
+  std::erase(pending_deletes_, file);
   history_file_ = std::move(file);
-  const std::scoped_lock lock(mutex_);
-  dirty_ = !history_file_.empty();
+  save_failed_ = false;
+  failures_ = 0; // a new target starts with a fresh budget
+  {
+    const std::scoped_lock lock(mutex_);
+    ++revision_;
+  }
+  // The file in use goes first, so turning saving off deletes it before this
+  // returns. A deletion that fails stays pending and in the status.
+  note_attempt(delete_pending());
+  publish_status();
 }
 
 void ClipboardWatcher::set_capacity(std::size_t capacity)
@@ -363,7 +481,7 @@ void ClipboardWatcher::set_capacity(std::size_t capacity)
   const std::scoped_lock lock(mutex_);
   history_.set_capacity(capacity);
   keep_stack_position_in_bounds();
-  dirty_ = true;
+  ++revision_;
 }
 
 std::vector<ClipboardEntry> ClipboardWatcher::snapshot() const
@@ -398,12 +516,15 @@ void ClipboardWatcher::clear()
     const std::scoped_lock lock(mutex_);
     history_.clear();
     stack_position_ = 0;
-    dirty_ = false;
+    ++revision_;
+    saved_revision_ = revision_; // an empty history has nothing to save
   }
-  if (!history_file_.empty()) {
-    std::error_code ignored;
-    std::filesystem::remove(history_file_, ignored);
-  }
+  save_failed_ = false;
+  failures_ = 0;
+  // The file may hold the old history, so it stays marked until it is gone.
+  active_file_stale_ = !history_file_.empty();
+  note_attempt(delete_pending());
+  publish_status();
 }
 
 void ClipboardWatcher::keep_stack_position_in_bounds()
@@ -449,7 +570,7 @@ void ClipboardWatcher::stack_remove()
   if (stack_position_ < entries.size()) {
     history_.remove(entries[stack_position_].id);
     keep_stack_position_in_bounds();
-    dirty_ = true;
+    ++revision_;
   }
 }
 

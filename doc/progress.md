@@ -4,6 +4,41 @@ What has been accomplished, newest first.
 
 ## 2026-11-17
 
+- Added a separate Clang C++/Objective-C++ coverage preset and local report script, plus CI
+  summary/HTML/JSON artifacts. All 11 instrumented C++ suite entries pass. The first report
+  identified gaps in atomic history-file replacement and UTF-8 bridge previews; added and
+  verified focused failure/recovery and Unicode round-trip tests. Recorded the core/bridge
+  baseline (88.89% lines, 76.97% branches), exclusions and LLVM missing-profile limitations.
+  Hosted coverage publication remains unverified until its new CI job runs.
+
+- Merged current `main` into the issue-cleanup branch, preserving Swift behavior tests and the
+  coordinator's self-build exemption. Resolved documentation conflicts while retaining both
+  sets of entries and restored the pre-existing local signing/disk-plan edits. The updated
+  Release build, all 12 tests and the ten-second launch smoke check pass; all 12 tracked
+  production Swift files pass the pinned formatting/lint checks.
+
+- Clipboard saves retain unsaved revisions on failure, retry automatically with bounded backoff,
+  and offer explicit recovery without a new copy. Failed clear/disable deletions stay pending;
+  disabling persistence still stops saves. Added content-free C bridge status and Settings
+  warnings plus Retry History Storage. Added deterministic core/bridge recovery and concurrent
+  mutation tests. All 11 Release tests, the clipboard test under ThreadSanitizer, formatting,
+  changed-source static analysis and a ten-second launch smoke check pass; interactive failure
+  warnings have not been exercised through the UI. Local LLVM checks used 23.1.5 (CI pins 23.1.4).
+
+- Added minimum-macOS metadata checks for all bundled executables, a macOS 14 runtime release
+  checklist, an opt-in synthetic clipboard benchmark and a JSON CPU/RSS sampler for existing
+  app/service processes. macOS 14 runtime, real image/UI and controlled ten-minute app
+  measurements remain unverified. Recorded an exploratory 30-second-per-workload Release
+  core baseline on M2 Pro/macOS 27.0.1, including 500 entries / 46.875 MiB of synthetic image
+  payloads. The process sampler completed a ten-second diagnostic; uncontrolled app state
+  prevents treating it as a baseline. Minimum-OS metadata and the launch smoke check pass.
+  The owner authorized a two-job coordinator bypass after memory pressure blocked admission.
+
+- Added pinned SwiftFormat 0.64.7 and SwiftLint 0.65.1, checksummed tool downloads, local
+  check/format commands and a dedicated CI job. Formatted five Swift files without behavior
+  changes. All 11 tracked Swift sources pass; a deliberately invalid scratch source fails.
+  The integrated Release build, all 11 tests and a ten-second launch smoke test pass on
+  macOS 27.0.1; the hosted CI run remains unverified.
 - Resolved PR #18 merge conflicts with `main` in the decision and progress logs, preserving
   both the Swift behavior test entries and the coordinator RAM exemption entries. Checked
   the merged diff and conflict markers; no build or runtime tests were rerun for this

@@ -117,3 +117,11 @@ if(BUILD_TESTING)
   # sanitized C++ objects.
   add_custom_target(hm_tests DEPENDS ${hm_test_targets} hm-mcp hm-run)
 endif()
+
+# Opt-in synthetic workloads; not part of normal builds or correctness tests.
+option(HM_BUILD_BENCHMARKS "Build repeatable clipboard core benchmarks" OFF)
+if(HM_BUILD_BENCHMARKS)
+  add_executable(clipboard_benchmark benchmarks/clipboard_benchmark.cpp)
+  target_link_libraries(clipboard_benchmark PRIVATE hm_core)
+  target_compile_options(clipboard_benchmark PRIVATE -Wall -Wextra -Wpedantic)
+endif()

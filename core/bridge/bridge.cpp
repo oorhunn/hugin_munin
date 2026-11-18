@@ -186,6 +186,24 @@ bool hm_clipboard_set_history_file(hm_clipboard *clipboard,
   }
 }
 
+hm_clipboard_persistence
+hm_clipboard_persistence_state(const hm_clipboard *clipboard)
+{
+  if (clipboard == nullptr)
+    return {};
+  const auto status = clipboard->watcher.persistence_status();
+  return {.save_failed = status.save_failed,
+          .delete_failed = status.delete_failed,
+          .retry_scheduled = status.retry_scheduled,
+          .generation = status.generation};
+}
+
+void hm_clipboard_retry_persistence(hm_clipboard *clipboard)
+{
+  if (clipboard)
+    clipboard->watcher.request_persistence_retry();
+}
+
 void hm_clipboard_stop(hm_clipboard *clipboard)
 {
   delete clipboard;

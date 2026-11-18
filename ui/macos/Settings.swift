@@ -117,8 +117,8 @@ final class Settings {
         if defaults.object(forKey: "shortcutKeyCode") == nil {
             shortcut = .standard
         } else {
-            let saved = HotKey(keyCode: (UInt32(exactly: defaults.integer(forKey: "shortcutKeyCode")) ?? UInt32.max),
-                               modifiers: (UInt32(exactly: defaults.integer(forKey: "shortcutModifiers")) ?? 0))
+            let saved = HotKey(keyCode: UInt32(exactly: defaults.integer(forKey: "shortcutKeyCode")) ?? UInt32.max,
+                               modifiers: UInt32(exactly: defaults.integer(forKey: "shortcutModifiers")) ?? 0)
             // Migrate the former default while preserving custom combinations.
             let oldDefault = HotKey(keyCode: UInt32(kVK_ANSI_C), modifiers: UInt32(cmdKey | shiftKey))
             shortcut = saved.isValid && saved != oldDefault ? saved : .standard
@@ -203,7 +203,20 @@ struct SettingsView: View {
                     Button("Clear History") { clipboard.clear() }
                         .disabled(clipboard.entries.isEmpty)
                 }
+                if let error = clipboard.persistenceError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                    HStack {
+                        if clipboard.persistenceRetryScheduled {
+                            Text("Retrying automatically…").font(.caption)
+                        }
+                        Button("Retry History Storage") { clipboard.retryPersistence() }
+                    }
+                }
             }
+        }
+        .onAppear { clipboard.refreshPersistenceStatus() }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            clipboard.refreshPersistenceStatus()
         }
         .pickerStyle(.segmented)
         .padding(20)
