@@ -293,6 +293,28 @@ void test_disk_tracker()
   auto *tracker =
       hm_disk_tracker_start(receive_disk_status, &statuses, roots, 1);
   require(tracker != nullptr, "Disk tracker starts");
+  require(hm_disk_volumes_json(nullptr) == nullptr,
+          "Null tracker has no volume list");
+  hm_disk_string_free(nullptr);
+  hm_disk_scan_volume(nullptr, "missing");
+  require(hm_disk_volume_report_create(nullptr, "", 0) == nullptr,
+          "Null volume report is safe");
+  char *volumes = hm_disk_volumes_json(tracker);
+  require(volumes != nullptr &&
+              std::strstr(volumes, "Internal disk") != nullptr,
+          "Volume metadata crosses the bridge");
+  hm_disk_string_free(volumes);
+  char *added = hm_disk_add_root(tracker, scanned.c_str());
+  require(added != nullptr && std::strstr(added, "error") == nullptr,
+          "Folder enrollment reports success across the bridge");
+  hm_disk_string_free(added);
+  char *updated = hm_disk_set_volume_roots(tracker, "", roots, 1);
+  require(updated != nullptr && std::strstr(updated, "error") == nullptr,
+          "Root changes round trip across the bridge");
+  hm_disk_string_free(updated);
+  require(hm_disk_volume_report_create(tracker, "missing", 0) == nullptr,
+          "Unknown drive has no report");
+
   require(hm_disk_report_create(tracker, 0) == nullptr,
           "No report before a scan");
 

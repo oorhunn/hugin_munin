@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-11-21 | External disk tracking uses filesystem UUIDs, per-volume local histories and relative paths, with one worker scanning sequentially. Drives are enrolled explicitly and retain reports while unavailable. The notch stays on the internal report. | Implements the requested external-drive plan. Identity prevents same-name replacement drives from sharing history, relative paths preserve comparisons on rename, and discarding detected interrupted scans prevents false deletions. |
 | 2026-11-17 | Use a separate Clang/LLVM source-coverage preset for core and C bridge, publish annotated HTML/JSON in CI, and establish a baseline before considering a percentage gate. | Coverage should expose untested behavior without replacing normal, Swift or sanitizer checks or rewarding an arbitrary target. |
 | 2026-11-17 | Keep failed clipboard saves and deletions pending, retry five times with exponential backoff, expose content-free persistence flags, and offer an explicit Settings retry. | Storage failure must not discard unsaved revisions or imply that a saved copy was deleted; bounded retries limit repeated full-history copies when storage stays broken. |
 | 2026-11-17 | Pin SwiftFormat and SwiftLint release binaries with SHA-256 checksums, and enforce layout plus a small bug-finding rule set in CI. | Local checks match CI independently of the runner Xcode version; layout stays separate from behavior changes. |

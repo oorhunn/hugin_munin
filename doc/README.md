@@ -7,6 +7,8 @@ Start with the page that matches what you need.
 | [Architecture](architecture.md) | Understand how the core, the bridge, and the UI fit together |
 | [Resource coordination utilities](resource-coordination.md) | Connect MCP clients, register jobs, and run coordinated commands |
 | [Resource coordination plan](resource-coordination-plan.md) | Review the proposed MCP service, agent reservations, and responsiveness safeguards |
+| [Disk tracking](disk-tracking.md) | Track internal and external volumes, including offline history |
+| [External drive tracking plan](external-drive-plan.md) | Review proposed per-volume disk history and disconnect handling |
 | [Development](development.md) | Build, test, format, and run sanitizers locally |
 | [Clipboard persistence](clipboard-persistence.md) | Understand storage failure status, retries and recovery |
 | [Coverage](coverage.md) | Generate and inspect core/bridge coverage reports |

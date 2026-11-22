@@ -469,3 +469,99 @@ void hm_disk_report_free(hm_disk_report *report)
   delete report;
 }
 }
+
+char *hm_disk_volumes_json(hm_disk_tracker *tracker)
+{
+  if (!tracker)
+    return nullptr;
+  try {
+    auto list = hm::Json::array();
+    for (const auto &item : tracker->tracker.volumes()) {
+      const auto &s = item.status;
+      list.push_back({{"id", item.volume.id},
+                      {"name", item.volume.name},
+                      {"mountPath", item.volume.mount_path},
+                      {"tracked", item.tracked},
+                      {"available", item.available},
+                      {"roots", item.roots},
+                      {"scanning", s.scanning},
+                      {"filesSeen", s.files_seen},
+                      {"bytesSeen", s.bytes_seen},
+                      {"lastScan", s.last_scan.value_or(0)},
+                      {"scanCount", s.scan_count},
+                      {"unreadableCount", s.unreadable_count},
+                      {"error", s.error}});
+    }
+    const auto text = list.dump();
+    return duplicate(text.c_str(), text.size() + 1);
+  } catch (const std::exception &) {
+    return nullptr;
+  }
+}
+
+namespace {
+char *disk_action_result(const hm::Collected<std::string> &result)
+{
+  const auto text =
+      (result ? hm::Json{{"id", *result}} : hm::Json{{"error", result.error()}})
+          .dump();
+  return duplicate(text.c_str(), text.size() + 1);
+}
+} // namespace
+char *hm_disk_add_root(hm_disk_tracker *tracker, const char *path)
+{
+  try {
+    return tracker && path ? disk_action_result(tracker->tracker.add_root(path))
+                           : nullptr;
+  } catch (const std::exception &) {
+    return nullptr;
+  }
+}
+char *hm_disk_set_volume_roots(hm_disk_tracker *tracker, const char *volume_id,
+                               const char *const *roots, size_t count)
+{
+  if (!tracker || !volume_id)
+    return nullptr;
+  try {
+    const auto result =
+        tracker->tracker.set_volume_roots(volume_id, to_strings(roots, count));
+    return disk_action_result(result ? hm::Collected<std::string>(volume_id)
+                                     : std::unexpected(result.error()));
+  } catch (const std::exception &) {
+    return nullptr;
+  }
+}
+char *hm_disk_forget_volume(hm_disk_tracker *tracker, const char *volume_id)
+{
+  if (!tracker || !volume_id)
+    return nullptr;
+  try {
+    const auto result = tracker->tracker.forget_volume(volume_id);
+    return disk_action_result(result ? hm::Collected<std::string>(volume_id)
+                                     : std::unexpected(result.error()));
+  } catch (const std::exception &) {
+    return nullptr;
+  }
+}
+void hm_disk_string_free(char *text)
+{
+  std::free(text);
+}
+void hm_disk_scan_volume(hm_disk_tracker *tracker, const char *volume_id)
+{
+  if (tracker && volume_id)
+    tracker->tracker.scan_now(volume_id);
+}
+hm_disk_report *hm_disk_volume_report_create(hm_disk_tracker *tracker,
+                                             const char *volume_id,
+                                             int64_t since_seconds)
+{
+  if (!tracker || !volume_id)
+    return nullptr;
+  try {
+    auto report = tracker->tracker.report(since_seconds, {}, volume_id);
+    return report ? new hm_disk_report{std::move(*report)} : nullptr;
+  } catch (const std::exception &) {
+    return nullptr;
+  }
+}

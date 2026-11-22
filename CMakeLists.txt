@@ -24,11 +24,12 @@ add_library(hm_core
   core/src/coordinator.cpp
   core/src/platform/macos/coordinator_ipc.cpp
   core/src/platform/macos/collectors.cpp
+  core/src/platform/macos/disk_volume.cpp
   core/src/platform/macos/disk_walk.cpp
   core/src/platform/macos/pasteboard.mm
 )
 target_include_directories(hm_core PUBLIC core/include third_party)
-target_link_libraries(hm_core PUBLIC "-framework CoreFoundation" "-framework IOKit" "-framework AppKit")
+target_link_libraries(hm_core PUBLIC "-framework DiskArbitration" "-framework CoreFoundation" "-framework IOKit" "-framework AppKit")
 target_compile_options(hm_core PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(hm_bridge core/bridge/bridge.cpp)
