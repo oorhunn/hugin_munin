@@ -2,6 +2,19 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-22
+
+- Closed the remaining gap in issue #17. CI and the release workflow now pack the macOS 26
+  Release build and run it unchanged on `macos-15`, the oldest GitHub-hosted runner, after GitHub
+  retired macOS 14 runners on 2026-11-02. Added `scripts/package_build.sh` and
+  `scripts/downlevel_check.sh`, which runs metadata, all CTest suites, `mcp_integration`, and the
+  launch check from a prebuilt tree. Releases now publish from a separate job only after the
+  macOS 15 job passes. Rewrote the macOS 14 procedure around the same script and added a table
+  of what is checked automatically, by hand, or not at all.
+  Verified locally on macOS 27 only: a Release build packed into a 2.3 MB archive, unpacked in
+  place, and passed all 11 CTest suites, `mcp_integration`, and the ten-second launch check.
+  The `macos-15` jobs have not run yet, and macOS 14 runtime behavior remains unverified.
+
 ## 2026-11-17
 
 - Added a separate Clang C++/Objective-C++ coverage preset and local report script, plus CI

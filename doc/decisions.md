@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-11-22 | Keep macOS 14 as the minimum. CI and releases run the macOS 26 Release build, without rebuilding it, on `macos-15`, and macOS 14 stays a documented manual release check. | Chosen by the owner. GitHub retired its macOS 14 runners on 2026-11-02, so macOS 15 is the oldest hosted runner. Running the same build there catches back-deployment failures without dropping Sonoma users. |
 | 2026-11-17 | Use a separate Clang/LLVM source-coverage preset for core and C bridge, publish annotated HTML/JSON in CI, and establish a baseline before considering a percentage gate. | Coverage should expose untested behavior without replacing normal, Swift or sanitizer checks or rewarding an arbitrary target. |
 | 2026-11-17 | Keep failed clipboard saves and deletions pending, retry five times with exponential backoff, expose content-free persistence flags, and offer an explicit Settings retry. | Storage failure must not discard unsaved revisions or imply that a saved copy was deleted; bounded retries limit repeated full-history copies when storage stays broken. |
 | 2026-11-17 | Pin SwiftFormat and SwiftLint release binaries with SHA-256 checksums, and enforce layout plus a small bug-finding rule set in CI. | Local checks match CI independently of the runner Xcode version; layout stays separate from behavior changes. |

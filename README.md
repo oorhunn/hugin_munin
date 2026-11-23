@@ -91,7 +91,7 @@ To quit the app, hover over the notch and click **Quit**.
 
 | Platform | Status |
 | --- | --- |
-| macOS | Working, tested on macOS 27 |
+| macOS | Working on macOS 27. CI tests on macOS 26 and 15. The macOS 14 minimum is unverified at runtime |
 | Ubuntu | Planned |
 
 ## Documentation

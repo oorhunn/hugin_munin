@@ -1,31 +1,50 @@
 # Supported macOS and performance validation
 
 The supported minimum remains macOS 14 on Apple Silicon. A deployment target is build metadata,
-not evidence that the app runs there. CI currently builds and runs on macOS 26 only.
+not evidence that the app runs there.
 
-## Supported-OS release procedure
+## What is checked where
+
+| Check | macOS 26 | macOS 15 | macOS 14 |
+| --- | --- | --- | --- |
+| Minimum-OS metadata of all four executables | CI and release | CI and release | Manual, below |
+| Core, bridge, and Swift behavior tests | CI and release, built there | CI and release, macOS 26 build run unchanged | Manual, below |
+| App stays running after launch | CI and release | CI and release | Manual, below |
+| Clipboard, Settings, and disk scan by hand | Manual | Not checked | Manual, below |
+| Notch on a MacBook | Manual | Not checked | Manual, below |
+| Performance baselines | Manual, local runs below | Not checked | Not checked |
+
+GitHub retired its macOS 14 runners on 2026-11-02, so macOS 15 is the oldest hosted runner.
+The macOS 15 job runs the exact Release build that CI made on macOS 26 through
+`scripts/downlevel_check.sh`. It does not rebuild anything, so it catches back-deployment failures
+in newer APIs and the Swift runtime that a deployment target alone can hide. It is not a macOS 14
+result. Treat macOS 14 runtime behavior as **unverified** for any release without the record below.
+
+## macOS 14 release procedure
 
 On a clean macOS 14 Apple Silicon machine or VM with a desktop session, record the release SHA,
 `sw_vers`, `system_profiler SPHardwareDataType` (omit serial numbers), Xcode/Swift version and
-signing method. Install the Release artifact being considered for release, not a different rebuild.
+signing method. Test the Release build being considered for release, not a different rebuild.
 
-1. Run `python3 scripts/check_macos_compatibility.py /path/to/HuginMunin.app`. CI also runs this
-   against all four bundled executables. This checks minimum OS metadata, not API availability.
-2. Run `scripts/smoke_test.sh /path/to/HuginMunin.app 30`. Check unified logs for launch failures.
-3. Run the automated core/bridge tests built from the same SHA on that machine:
-   `ctest --test-dir build --output-on-failure`. This needs development tools; `bridge_test`
-   temporarily changes the system clipboard. Save anything needed first.
-4. Follow the clipboard keyboard and file shelf checklists in [Development](development.md),
+1. CTest records absolute paths, so build and test at one fixed path on both Macs. On the build
+   Mac, clone the release SHA to `/Users/Shared/hm-release`, then run
+   `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release`, `cmake --build build`, and
+   `scripts/package_build.sh build build-release.tar.gz`. On the macOS 14 Mac, clone the same
+   SHA to the same path and run `tar -xzf build-release.tar.gz` there. That Mac needs CMake and
+   the Command Line Tools for `ctest` and `python3`, but no compiler run.
+2. Run `scripts/downlevel_check.sh build 30`. It prints the host, checks the minimum-OS metadata,
+   runs every test from the prebuilt tree, and checks that the app stays running for 30 seconds.
+   `bridge_test` temporarily changes the system clipboard, so save anything needed first. Check
+   the unified log for launch failures.
+3. Follow the clipboard keyboard and file shelf checklists in [Development](development.md),
    including copy, restore, image preview, persistence after quit, clear, Settings, disk scans,
    unavailable permissions and launch at login. Check System/Disk views and fallback layout in
    a VM; verify the notch on physical hardware separately.
-5. Record pass/fail per step, OS/hardware, artifact SHA-256 and any skipped checks in the release
-   notes. Repeat on the current OS. macOS 14 runtime checks are **unverified** until this record
-   exists. A metadata/host smoke pass must never be reported as a macOS 14 runtime pass.
+4. Record pass/fail per step, OS/hardware, artifact SHA-256 and any skipped checks in the release
+   notes. A macOS 15 CI pass or a metadata pass must never be reported as a macOS 14 runtime pass.
 
-There is no macOS 14 machine configured in this workspace. No runner label is added without an
-available runner. Release reviewers must explicitly record the unverified minimum-OS risk if
-shipping without that machine; the existing release workflow does not enforce the manual step.
+No macOS 14 machine is set up for this project. The release workflow cannot enforce this manual
+step, so release reviewers must record the unverified minimum-OS risk when shipping without it.
 
 ## Synthetic clipboard core benchmark
 

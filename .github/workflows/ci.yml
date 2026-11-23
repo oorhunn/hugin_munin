@@ -78,6 +78,36 @@ jobs:
         run: python3 scripts/check_macos_compatibility.py build/HuginMunin.app
       - name: Launch the app
         run: scripts/smoke_test.sh build/HuginMunin.app
+      - name: Pack the Release build for the older-OS check
+        if: matrix.config == 'Release'
+        run: scripts/package_build.sh build build-release.tar.gz
+      - name: Upload the Release build
+        if: matrix.config == 'Release'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build
+          path: build-release.tar.gz
+          if-no-files-found: error
+          retention-days: 3
+
+  older-os:
+    # GitHub retired its macOS 14 runners on 2026-11-02, so macOS 15 is the oldest hosted runner.
+    # This runs the exact macOS 26 Release build there, without rebuilding it.
+    name: Run the Release build on macOS 15
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-build
+      - name: Unpack at the path it was built in
+        run: tar -xzf build-release.tar.gz
+      - name: Test and launch the prebuilt app
+        run: scripts/downlevel_check.sh build
 
   sanitizers:
     name: Sanitizers (${{ matrix.preset }})
