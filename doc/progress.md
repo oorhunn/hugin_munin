@@ -2,6 +2,13 @@
 
 What has been accomplished, newest first.
 
+## 2026-11-24
+
+- Made the expanded notch footer actions easier to identify with bordered buttons and a
+  System / Disk segmented control that highlights the active slide. Swift formatting, lint,
+  and syntax checks passed. The resource coordinator held the local build in its queue, so
+  the build, tests, launch smoke test, and interactive notch behavior are unverified locally.
+
 ## 2026-11-22
 
 - Closed the remaining gap in issue #17. CI and the release workflow now pack the macOS 26

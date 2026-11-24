@@ -354,9 +354,9 @@ private struct WingLabel: View {
 }
 
 /// Compact readout shown when the notch is expanded, with the jobs list below it. The top is a
-/// row of slides that a swipe or the labels in the footer move between. Each slide's position
-/// comes straight from the current page, because a ScrollView rebuilt on every expand came to
-/// rest a few points out of place.
+/// row of slides navigated by swiping or using the segmented control in the footer. Each slide's
+/// position comes straight from the current page, because a ScrollView rebuilt on every expand
+/// came to rest a few points out of place.
 private struct NotchPanel: View {
     let system: SystemState
     let disk: DiskTracker
@@ -414,19 +414,19 @@ private struct NotchPanel: View {
                 Text("Estimates supplied by apps").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
             }
-            HStack {
+            HStack(spacing: 8) {
                 Button("Settings", action: openSettings)
                 Button(system.admissionsPaused ? "Resume jobs" : "Pause new jobs") {
                     setPaused(!system.admissionsPaused)
                 }
                 Button("Disk Tracker", action: openDisk)
                 Spacer()
-                pageLabels
+                pagePicker
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }
-            .buttonStyle(.borderless)
-            .font(.caption)
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
         }
         .padding(.top, NotchGeometry.slideTop)
     }
@@ -468,13 +468,18 @@ private struct NotchPanel: View {
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private var pageLabels: some View {
-        HStack(spacing: 10) {
+    private var pagePicker: some View {
+        Picker("Metrics view", selection: Binding(
+            get: { state.page },
+            set: { state.show($0) }
+        )) {
             ForEach(NotchPage.allCases) { page in
-                Button(page.rawValue) { state.show(page) }
-                    .foregroundStyle(page == state.page ? .primary : .secondary)
+                Text(page.rawValue).tag(page)
             }
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
     }
 }
 
