@@ -267,13 +267,21 @@ private func receiveDiskStatus(_ status: UnsafePointer<hm_disk_status>?,
 
 @MainActor @Observable
 final class DiskTracker {
-    // The notch always displays the internal disk.
+    // The notch's disk report summarizes the internal disk.
     private(set) var status = DiskScanStatus()
     private(set) var report: DiskReportData?
     private(set) var volumes: [DiskVolumeData] = []
     private(set) var selectedReport: DiskReportData?
     private(set) var actionError = ""
     private(set) var editing = false
+
+    var activeScan: (drive: String, status: DiskScanStatus)? {
+        if status.scanning { return ("Internal disk", status) }
+        guard let volume = volumes.first(where: { !$0.id.isEmpty && $0.scanning }) else {
+            return nil
+        }
+        return (volume.name, volume.status)
+    }
 
     var selectedVolumeID = "" {
         didSet {

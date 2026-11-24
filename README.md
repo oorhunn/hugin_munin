@@ -46,8 +46,10 @@ quits; adding an item leaves its original in place.
 ## Disk tracker
 
 The disk tracker answers "what used up my free space?". Open **Disk Tracker** from the expanded
-notch and click **Scan Now**. After that, swipe the expanded notch or click **Disk** at the bottom of
-it for a summary: free space and the three things that grew most. Each scan records the size of your folders, and later scans show what
+notch and click **Scan Now**. A cyan drive icon appears beside the physical notch while a scan
+is running. Hover to see the active drive, files counted, and size scanned. Swipe the expanded
+notch or click **Disk** for the internal disk's last scan and space summary.
+Each scan records the size of your folders, and later scans show what
 changed over the last scan, day, week, or month.
 
 - **What used the space** names the projects, folders, and large files that grew. A project is a
@@ -62,9 +64,9 @@ changed over the last scan, day, week, or month.
 Use the **Drive** selector for a connected external drive, then **Track and Scan**, or choose
 **Add Drive or Folder…** to track specific external folders. Each drive keeps separate capacity
 figures and history. Offline drives retain their last report; reconnecting the same volume
-preserves history even if its name or mount path changes. The notch continues to show the
-internal disk. Local physical external volumes need a stable filesystem UUID; network shares
-and disk images are not supported. See [disk tracking](doc/disk-tracking.md).
+preserves history even if its name or mount path changes. The notch shows live external scan
+progress alongside its internal disk summary. Local physical external volumes need a stable
+filesystem UUID. See [disk tracking](doc/disk-tracking.md) for supported drives.
 
 After each drive's first scan, scans repeat every 6 hours while the app runs, and history stays in
 `~/Library/Application Support/HuginMunin/DiskHistory` for up to 90 days. Nothing scans until you

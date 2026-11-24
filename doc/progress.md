@@ -4,6 +4,14 @@ What has been accomplished, newest first.
 
 ## 2026-11-24
 
+- Added a drive icon beside the collapsed physical notch during disk scans and live progress
+  on either expanded tab for internal and external drives. The Disk slide shows the internal
+  disk's last scan time or scan error. The app built, all 12 CTest suites passed, the app stayed
+  running for the 10-second smoke test, and Swift lint and formatting passed. Interactive
+  notch layout and progress during a real scan remain unverified.
+
+## 2026-11-24
+
 - Made the expanded notch footer actions easier to identify with bordered buttons and a
   System / Disk segmented control that highlights the active slide. Swift formatting, lint,
   and syntax checks passed. The resource coordinator held the local build in its queue, so

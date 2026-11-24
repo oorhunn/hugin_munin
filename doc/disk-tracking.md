@@ -7,8 +7,13 @@ that drive and starts its first scan. **Add Drive or Folder…** lets you choose
 or individual folders; click **Scan Now** to start tracking changes.
 
 Each drive has separate comparison baselines, capacity figures, roots, and scan history. The
-period control applies to the selected report; the notch continues to summarize the internal
-disk, labeled explicitly. The supported external targets are local physical filesystems with
+period control applies to the selected report. The Disk slide summarizes the internal disk
+and shows its last scan time or latest scan error. While a scan runs, a cyan drive icon appears
+beside the physical notch. Hover to see the active drive, files counted, and size scanned on
+either tab, regardless of the drive selected in Disk Tracker. External scan progress refreshes
+through the drive list's two-second polling interval.
+
+The supported external targets are local physical filesystems with
 a stable UUID, including USB and Thunderbolt volumes. Network shares, disk images, and
 filesystems without a usable UUID are rejected with a message. A read-only source can be
 scanned when readable; history is written locally.
