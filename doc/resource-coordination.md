@@ -80,7 +80,10 @@ shows title, agent, project, state, and the app's duration/remaining estimate. Q
 estimated duration and “waiting”; running jobs show remaining time. Missing estimates show
 “No estimate”; elapsed estimates show “Estimate exceeded”; missing heartbeats show “Heartbeat
 overdue”. Estimates update at the display refresh interval and are labeled as supplied by apps.
-The footer can pause/resume new admissions without cancelling existing jobs.
+The footer groups bordered Settings, Pause new jobs (or Resume jobs), and Disk Tracker buttons
+on the left, with Quit on the right. The System / Disk segmented control highlights the current
+metrics view and stays in sync when you swipe the metrics. Pausing admissions leaves existing
+jobs running.
 
 ## Initial policy and failure behavior
 
