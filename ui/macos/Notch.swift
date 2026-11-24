@@ -289,6 +289,15 @@ struct NotchView: View {
                     .fill(.black)
                 VStack(spacing: 0) {
                     wings.frame(height: geometry.height)
+                        .overlay(alignment: .trailing) {
+                            if !state.expanded, geometry.notchWidth > 0, let scan = disk.activeScan {
+                                Image(systemName: "externaldrive.fill")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(.cyan)
+                                    .padding(.trailing, 3)
+                                    .accessibilityLabel("Scanning \(scan.drive)")
+                            }
+                        }
                     if state.expanded {
                         VStack(spacing: 10) {
                             // An explicit closure avoids Swift 6.3's IR-generation crash when
@@ -378,6 +387,19 @@ private struct NotchPanel: View {
             .frame(height: NotchGeometry.slideHeight)
             .clipped()
             Divider().overlay(.white.opacity(0.15))
+            if let scan = disk.activeScan {
+                HStack(spacing: 8) {
+                    ProgressView().progressViewStyle(.circular).controlSize(.small)
+                    Text("Scanning \(scan.drive)")
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                    Spacer()
+                    Text("\(scan.status.filesSeen.formatted()) files · \(Format.bytes(scan.status.bytesSeen))")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
             HStack {
                 Text("Jobs").font(.caption.weight(.semibold))
                 Spacer()
@@ -489,14 +511,28 @@ private struct DiskSlide: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Internal disk").font(.caption2).foregroundStyle(.secondary)
+            HStack {
+                Text("Internal disk")
+                Spacer()
+                if !tracker.status.scanning {
+                    if !tracker.status.error.isEmpty {
+                        Label(tracker.status.error, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
+                            .help(tracker.status.error)
+                    } else if let lastScan = tracker.status.lastScan {
+                        Text("Last scan \(lastScan.formatted(date: .abbreviated, time: .shortened))")
+                    }
+                }
+            }
+            .foregroundStyle(.secondary)
             if let report = tracker.report {
                 Text(report.headline).font(.caption.weight(.semibold)).lineLimit(1)
                 if report.hotspots.isEmpty {
                     Text(report.baseline == nil ? "One scan so far." : "Nothing grew by 50 MB or more.")
                         .foregroundStyle(.secondary)
                 }
-                ForEach(report.hotspots.prefix(tracker.status.scanning ? 2 : 3)) { item in
+                ForEach(report.hotspots.prefix(3)) { item in
                     HStack(spacing: 6) {
                         Text(item.displayPath).lineLimit(1).truncationMode(.middle)
                         Spacer()
@@ -506,10 +542,6 @@ private struct DiskSlide: View {
             } else if !tracker.status.scanning {
                 Text("No scans yet").font(.caption.weight(.semibold))
                 Text("Open Disk Tracker and click Scan Now.").foregroundStyle(.secondary)
-            }
-            if tracker.status.scanning {
-                Text("Scanning: \(tracker.status.filesSeen.formatted()) files")
-                    .foregroundStyle(.secondary)
             }
         }
         .font(.caption2)
