@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <array>
+#include <cerrno>
 #include <cstdlib>
 #include <set>
 #include <utility>
@@ -36,9 +37,13 @@ void walk_root(const std::string &root, DiskWalkVisitor &visitor,
   }
 
   while (!stop.stop_requested()) {
+    errno = 0;
     const FTSENT *entry = fts_read(walk);
-    if (!entry)
+    if (!entry) {
+      if (errno != 0)
+        visitor.unreadable(root);
       break;
+    }
     switch (entry->fts_info) {
     case FTS_D:
       visitor.enter_directory(entry->fts_path);

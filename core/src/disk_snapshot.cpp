@@ -292,8 +292,11 @@ DiskSnapshot DiskSnapshotBuilder::finish()
 
 std::string serialize_snapshot(const DiskSnapshot &snapshot)
 {
-  std::string out(snapshot_header);
+  std::string out(snapshot.volume_id.empty() ? snapshot_header
+                                             : "hm-disk-snapshot 2");
   out += '\n';
+  if (!snapshot.volume_id.empty())
+    out += "identity " + escape_path(snapshot.volume_id) + '\n';
   out += "time " + std::to_string(snapshot.time) + '\n';
   out += "volume " + std::to_string(snapshot.volume_total) + ' ' +
          std::to_string(snapshot.volume_free) + '\n';
@@ -328,7 +331,9 @@ Collected<DiskSnapshot> parse_snapshot(std::string_view text)
     return std::unexpected("Invalid disk snapshot line: " + std::string(line));
   };
 
-  if (take_line() != snapshot_header)
+  const auto header = take_line();
+  const bool version_two = header == "hm-disk-snapshot 2";
+  if (header != snapshot_header && !version_two)
     return std::unexpected("Not a disk snapshot of a known version");
 
   DiskSnapshot snapshot;
@@ -339,7 +344,12 @@ Collected<DiskSnapshot> parse_snapshot(std::string_view text)
     const auto tag = line->substr(0, space);
     auto value = line->substr(space + 1);
 
-    if (tag == "time") {
+    if (tag == "identity" && version_two) {
+      const auto identity = unescape_path(value);
+      if (!identity || identity->empty() || !snapshot.volume_id.empty())
+        return invalid(*line);
+      snapshot.volume_id = *identity;
+    } else if (tag == "time") {
       const auto number = take_number<std::int64_t>(value);
       if (!number)
         return invalid(*line);
@@ -373,8 +383,9 @@ Collected<DiskSnapshot> parse_snapshot(std::string_view text)
       return invalid(*line);
     }
   }
-  if (!text.empty())
-    return std::unexpected("Disk snapshot is truncated");
+  if (!text.empty() || (version_two && snapshot.volume_id.empty()))
+    return std::unexpected(
+        "Disk snapshot is truncated or missing its volume identity");
   std::ranges::sort(snapshot.entries, {}, &DiskEntry::path);
   return snapshot;
 }
@@ -383,6 +394,9 @@ DiskReport compare_snapshots(const DiskSnapshot *before,
                              const DiskSnapshot &after,
                              const DiskReportLimits &limits)
 {
+  if (before && before->volume_id != after.volume_id)
+    before =
+        nullptr; // never compare different filesystems or guess legacy identity
   DiskReport report;
   report.after_time = after.time;
   report.free_after = after.volume_free;

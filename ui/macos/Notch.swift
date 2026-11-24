@@ -484,6 +484,7 @@ private struct DiskSlide: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            Text("Internal disk").font(.caption2).foregroundStyle(.secondary)
             if let report = tracker.report {
                 Text(report.headline).font(.caption.weight(.semibold)).lineLimit(1)
                 if report.hotspots.isEmpty {

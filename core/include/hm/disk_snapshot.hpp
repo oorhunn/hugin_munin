@@ -32,6 +32,8 @@ struct DiskEntry {
 };
 
 struct DiskSnapshot {
+  std::string
+      volume_id; // nonempty: v2, paths relative to volume as /folder/file
   std::int64_t time = 0; // seconds since the Unix epoch
   std::uint64_t volume_total = 0, volume_free = 0;
   std::uint64_t file_count = 0;

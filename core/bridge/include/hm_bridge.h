@@ -243,6 +243,20 @@ const char *hm_disk_report_unreadable(const hm_disk_report *report,
 // Accepts NULL.
 void hm_disk_report_free(hm_disk_report *report);
 
+// Owned UTF-8 JSON: volume list/status, or {id: ...}/{error: ...} for
+// mutations. Call off the main thread and free with hm_disk_string_free. NULL
+// on allocation failure.
+char *hm_disk_volumes_json(hm_disk_tracker *tracker);
+char *hm_disk_add_root(hm_disk_tracker *tracker, const char *path);
+char *hm_disk_set_volume_roots(hm_disk_tracker *tracker, const char *volume_id,
+                               const char *const *roots, size_t count);
+char *hm_disk_forget_volume(hm_disk_tracker *tracker, const char *volume_id);
+void hm_disk_string_free(char *text);
+void hm_disk_scan_volume(hm_disk_tracker *tracker, const char *volume_id);
+hm_disk_report *hm_disk_volume_report_create(hm_disk_tracker *tracker,
+                                             const char *volume_id,
+                                             int64_t since_seconds);
+
 #ifdef __cplusplus
 }
 #endif

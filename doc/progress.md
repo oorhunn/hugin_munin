@@ -15,6 +15,24 @@ What has been accomplished, newest first.
   place, and passed all 11 CTest suites, `mcp_integration`, and the ten-second launch check.
   The `macos-15` jobs have not run yet, and macOS 14 runtime behavior remains unverified.
 
+- Prepared the external-drive tracking change for a pull request on top of current `main`,
+  separating pre-existing signing, permission-guide, and workspace-cleanup edits from the feature.
+  Retained the completed build, 12-suite test, lint, smoke, and real external APFS validation
+  results recorded below; no runtime changes or additional builds were needed for PR preparation.
+
+## 2026-11-21
+
+- Implemented external volume discovery, UUID-based tracking, per-volume version 2 history,
+  capacity, serialized scheduling, offline reports, reconnect handling, and drive selection in
+  the existing disk tracker window. Preserved internal version 1 history and the notch's internal
+  summary. Added synthetic regression coverage and bridge/live discovery checks. At the user's
+  explicit direction, bypassed the constrained resource queue for a one-job validation run.
+  The full build and all 12 CTest suites passed; the app stayed running for the 10-second smoke
+  test. C++ lint on changed sources, C++/Swift formatting, Swift lint, and diff checks passed.
+  A temporary fixture on the connected external APFS drive completed two real scans and reported
+  12 MiB of growth with independent capacity/history; removed all fixture files afterward.
+  External rename/unplug, exFAT, and interactive Finder/permission behavior remain unverified.
+
 ## 2026-11-17
 
 - Added a separate Clang C++/Objective-C++ coverage preset and local report script, plus CI
@@ -23,6 +41,10 @@ What has been accomplished, newest first.
   verified focused failure/recovery and Unicode round-trip tests. Recorded the core/bridge
   baseline (88.89% lines, 76.97% branches), exclusions and LLVM missing-profile limitations.
   Hosted coverage publication remains unverified until its new CI job runs.
+
+- Added a proposed external-drive disk tracking plan covering stable volume identity, separate
+  histories and capacity, disconnect/reconnect handling, legacy history, UI changes, and validation.
+  Planning only; no runtime code changed and no build or tests were run.
 
 - Merged current `main` into the issue-cleanup branch, preserving Swift behavior tests and the
   coordinator's self-build exemption. Resolved documentation conflicts while retaining both

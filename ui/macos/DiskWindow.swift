@@ -17,8 +17,16 @@ struct DiskView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            driveSelector
             header
-            if let report = tracker.report {
+            if !tracker.selectedAvailable {
+                Label("Drive offline or locked. Showing the last saved scan.", systemImage: "externaldrive.badge.xmark")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            if !tracker.actionError.isEmpty {
+                Text(tracker.actionError).foregroundStyle(.red).font(.callout)
+            }
+            if let report = tracker.selectedReport {
                 summary(report)
                 if !report.hotspots.isEmpty {
                     hotspots(report.hotspots)
@@ -29,8 +37,31 @@ struct DiskView: View {
             }
             footer
         }
+        .environment(\.diskDriveAvailable, tracker.selectedAvailable)
         .padding(16)
         .frame(minWidth: 620, minHeight: 520)
+    }
+
+    private var driveSelector: some View {
+        HStack {
+            Picker("Drive", selection: $tracker.selectedVolumeID) {
+                if tracker.volumes.isEmpty { Text("Internal disk").tag("") }
+                ForEach(tracker.volumes) { Text($0.title).tag($0.id) }
+            }
+            .disabled(tracker.editing)
+            Spacer()
+            Button("Add Drive or Folder…", action: addFolder)
+                .disabled(tracker.editing)
+        }
+    }
+
+    private func addFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.message = "Choose an external drive or a folder to track. Click Scan Now to start."
+        guard panel.runModal() == .OK, let path = panel.url?.path(percentEncoded: false) else { return }
+        tracker.addFolder(path)
     }
 
     private var header: some View {
@@ -46,8 +77,8 @@ struct DiskView: View {
                 .popover(isPresented: $options.showRoots, arrowEdge: .bottom) {
                     DiskRootsView(tracker: tracker)
                 }
-            Button("Scan Now", action: tracker.scan)
-                .disabled(tracker.status.scanning)
+            Button(tracker.selectedVolume?.tracked == false ? "Track and Scan" : "Scan Now", action: tracker.scan)
+                .disabled(tracker.selectedStatus.scanning || !tracker.selectedAvailable || tracker.editing)
         }
     }
 
@@ -132,20 +163,20 @@ struct DiskView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            if tracker.status.scanning {
+            if tracker.selectedStatus.scanning {
                 ProgressView().controlSize(.small)
-                Text("Scanning: \(tracker.status.filesSeen.formatted()) files, "
-                    + Format.bytes(tracker.status.bytesSeen))
-            } else if !tracker.status.error.isEmpty {
+                Text("Scanning: \(tracker.selectedStatus.filesSeen.formatted()) files, "
+                    + Format.bytes(tracker.selectedStatus.bytesSeen))
+            } else if !tracker.selectedStatus.error.isEmpty {
                 Image(systemName: "exclamationmark.triangle").foregroundStyle(.red)
-                Text(tracker.status.error).lineLimit(2)
-            } else if let lastScan = tracker.status.lastScan {
+                Text(tracker.selectedStatus.error).lineLimit(2)
+            } else if let lastScan = tracker.selectedStatus.lastScan {
                 Text("Last scan \(lastScan.formatted(date: .abbreviated, time: .shortened))")
             }
             Spacer()
-            if tracker.status.unreadableCount > 0 {
-                Text("\(tracker.status.unreadableCount.formatted()) unreadable, left out")
-                    .help(tracker.report?.unreadable.prefix(20).joined(separator: "\n") ?? "")
+            if tracker.selectedStatus.unreadableCount > 0 {
+                Text("\(tracker.selectedStatus.unreadableCount.formatted()) unreadable, left out")
+                    .help(tracker.selectedReport?.unreadable.prefix(20).joined(separator: "\n") ?? "")
                 Button("Allow Access…", action: openFullDiskAccess)
                     .help("Open Full Disk Access in System Settings")
             }
@@ -215,13 +246,26 @@ private struct ChangeText: View {
     }
 }
 
+private struct DiskDriveAvailableKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+private extension EnvironmentValues {
+    var diskDriveAvailable: Bool {
+        get { self[DiskDriveAvailableKey.self] }
+        set { self[DiskDriveAvailableKey.self] = newValue }
+    }
+}
+
 private struct DiskItemMenu: View {
     let item: DiskItem
+    @Environment(\.diskDriveAvailable) private var driveAvailable
 
     var body: some View {
         Button("Show in Finder") {
             NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
         }
+        .disabled(!driveAvailable)
         Button("Copy Path") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(item.path, forType: .string)
@@ -241,29 +285,33 @@ private struct DiskRootsView: View {
                     Text((root as NSString).abbreviatingWithTildeInPath).lineLimit(1)
                     Spacer()
                     Button("Remove", systemImage: "minus.circle") {
-                        tracker.roots.removeAll { $0 == root }
+                        tracker.removeFolder(root)
                     }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.borderless)
                 }
             }
+            if !tracker.selectedVolumeID.isEmpty && tracker.selectedVolume?.tracked == true {
+                Button("Stop Tracking Drive", action: tracker.forgetSelectedVolume)
+                    .disabled(tracker.selectedStatus.scanning)
+            }
             Text("Changes apply from the next scan.").font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button("Add Folder…", action: addFolder)
-                Button("Use Defaults") { tracker.roots = DiskTracker.defaultRoots }
+                Button("Use Defaults", action: tracker.useDefaults)
             }
         }
         .padding(14)
-        .frame(width: 320)
+        .frame(width: 360)
+        .disabled(tracker.editing)
     }
 
     private func addFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
-        guard panel.runModal() == .OK, let path = panel.url?.path(percentEncoded: false),
-              !tracker.roots.contains(path) else { return }
-        tracker.roots.append(path)
+        guard panel.runModal() == .OK, let path = panel.url?.path(percentEncoded: false) else { return }
+        tracker.addFolder(path)
     }
 }
 

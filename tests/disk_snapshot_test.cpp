@@ -418,10 +418,27 @@ void test_expires_old_scans()
           "the latest scan always stays");
 }
 
+void test_volume_identity()
+{
+  auto before = snapshot(100, {dir("/home", 1 * gb)});
+  auto after = snapshot(200, {dir("/home", 2 * gb)});
+  before.volume_id = "first-drive";
+  after.volume_id = "second-drive";
+  const auto parsed = hm::parse_snapshot(hm::serialize_snapshot(after));
+  require(parsed && parsed->volume_id == after.volume_id,
+          "version two preserves identity");
+  require(!hm::compare_snapshots(&before, after).before_time,
+          "different drives never compare");
+  before.volume_id.clear();
+  require(!hm::compare_snapshots(&before, after).before_time,
+          "legacy identity is not guessed");
+}
+
 } // namespace
 
 int main()
 {
+  test_volume_identity();
   test_normalizes_roots();
   test_builds_recursive_sizes();
   test_linked_worktree_is_a_project();
