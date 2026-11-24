@@ -8,12 +8,12 @@ permissions:
   contents: read
 
 jobs:
-  release:
-    name: Build and publish
+  build:
+    name: Build and package
     runs-on: macos-26
     timeout-minutes: 20
-    permissions:
-      contents: write # create the GitHub Release
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     env:
       TAG: ${{ github.ref_name }}
     steps:
@@ -21,6 +21,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check the tag against the project version
+        id: version
         run: |
           version=$(sed -n 's/^project(hugin_munin VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           if [ "$TAG" != "v$version" ]; then
@@ -28,6 +29,7 @@ jobs:
             exit 1
           fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -46,6 +48,58 @@ jobs:
           # ditto keeps the bundle's signature intact, and zip does not always.
           ditto -c -k --keepParent build/HuginMunin.app "dist/$archive"
           (cd dist && shasum -a 256 "$archive" > "$archive.sha256")
+      - name: Upload the release archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Pack the build for the older-OS check
+        run: scripts/package_build.sh build build-release.tar.gz
+      - name: Upload the build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build
+          path: build-release.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  older-os:
+    # macOS 15 is the oldest GitHub-hosted runner. macOS 14 stays a manual check; see doc/validation.md.
+    name: Run the release build on macOS 15
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-build
+      - name: Unpack at the path it was built in
+        run: tar -xzf build-release.tar.gz
+      - name: Test and launch the prebuilt app
+        run: scripts/downlevel_check.sh build
+
+  publish:
+    name: Publish
+    needs: [build, older-os]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write # create the GitHub Release
+    env:
+      TAG: ${{ github.ref_name }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Check the archive checksum
+        run: (cd dist && sha256sum -c ./*.sha256)
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,4 +110,4 @@ jobs:
             --prerelease \
             --title "Hugin & Munin $VERSION" \
             --generate-notes \
-            --notes "Apple Silicon only. This build is signed ad hoc, not with a Developer ID, so macOS blocks it after download. See doc/ci-cd.md."
+            --notes "Apple Silicon only. Tested by CI on macOS 26 and macOS 15; macOS 14 is not checked automatically. This build is signed ad hoc, not with a Developer ID, so macOS blocks it after download. See doc/ci-cd.md."

@@ -142,7 +142,8 @@ a build:
 vtool -show-build build/HuginMunin.app/Contents/MacOS/HuginMunin
 ```
 
-See [Compatibility and performance validation](validation.md) for the minimum-OS release
+CI runs the macOS 26 Release build on macOS 15 as well. See
+[Compatibility and performance validation](validation.md) for the minimum-OS release
 checklist, opt-in clipboard benchmarks and process CPU/RSS sampling commands.
 
 ## Manual shelf checks
