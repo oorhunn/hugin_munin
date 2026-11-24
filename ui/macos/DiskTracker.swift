@@ -154,23 +154,100 @@ extension DiskReportData {
     }
 }
 
-/// Owns the core's tracker. Reports are built off the main thread, so the lock keeps the tracker
-/// from being stopped under one.
+/// Copied volume state. Discovery and scan policy live in C++.
+struct DiskVolumeData: Decodable, Identifiable, Sendable, Equatable {
+    var id: String
+    var name: String
+    var mountPath: String
+    var tracked: Bool
+    var available: Bool
+    var roots: [String]
+    var scanning: Bool
+    var filesSeen: UInt64
+    var bytesSeen: UInt64
+    var lastScan: Int64
+    var scanCount: Int
+    var unreadableCount: Int
+    var error: String
+
+    var title: String {
+        let label = id.isEmpty ? name : "\(name) (\(mountPath))"
+        return available ? label : "\(label) — Offline"
+    }
+
+    var status: DiskScanStatus {
+        var result = DiskScanStatus()
+        result.scanning = scanning
+        result.filesSeen = filesSeen
+        result.bytesSeen = bytesSeen
+        result.lastScan = lastScan == 0 ? nil : Date(timeIntervalSince1970: TimeInterval(lastScan))
+        result.scanCount = scanCount
+        result.unreadableCount = unreadableCount
+        result.error = error
+        return result
+    }
+}
+
+private struct DiskActionResult: Decodable, Sendable {
+    var id: String?
+    var error: String?
+}
+
+/// Serializes UI access to the handle, including stop versus detached report reads.
 private final class TrackerHandle: @unchecked Sendable {
     private let lock = NSLock()
     private var tracker: OpaquePointer?
 
     init(_ tracker: OpaquePointer?) { self.tracker = tracker }
 
-    func report(since seconds: Int64) -> DiskReportData? {
+    func report(since seconds: Int64, volume: String = "") -> DiskReportData? {
         lock.withLock {
-            guard let report = hm_disk_report_create(tracker, seconds) else { return nil }
+            guard let tracker,
+                  let report = hm_disk_volume_report_create(tracker, volume, seconds) else { return nil }
             defer { hm_disk_report_free(report) }
             return DiskReportData(report)
         }
     }
 
-    func use(_ body: (OpaquePointer?) -> Void) { lock.withLock { body(tracker) } }
+    func volumes() -> [DiskVolumeData] {
+        lock.withLock {
+            guard let tracker, let text = hm_disk_volumes_json(tracker) else { return [] }
+            defer { hm_disk_string_free(text) }
+            return (try? JSONDecoder().decode([DiskVolumeData].self,
+                                              from: Data(String(cString: text).utf8))) ?? []
+        }
+    }
+
+    func action(path: String? = nil, volume: String = "", roots: [String]? = nil,
+                forget: Bool = false) -> DiskActionResult {
+        lock.withLock {
+            guard let tracker else { return DiskActionResult(error: "Disk tracker is unavailable") }
+            let text: UnsafeMutablePointer<CChar>?
+            if let path {
+                text = hm_disk_add_root(tracker, path)
+            } else if let roots {
+                let copies = roots.map { strdup($0) }
+                defer { copies.forEach { free($0) } }
+                let pointers = copies.map { UnsafePointer<CChar>($0) }
+                text = pointers.withUnsafeBufferPointer {
+                    hm_disk_set_volume_roots(tracker, volume, $0.baseAddress, $0.count)
+                }
+            } else if forget {
+                text = hm_disk_forget_volume(tracker, volume)
+            } else {
+                return DiskActionResult(error: "No disk action requested")
+            }
+            guard let text else { return DiskActionResult(error: "Could not update drive tracking") }
+            defer { hm_disk_string_free(text) }
+            return (try? JSONDecoder().decode(DiskActionResult.self,
+                                              from: Data(String(cString: text).utf8)))
+                ?? DiskActionResult(error: "Could not read drive tracking result")
+        }
+    }
+
+    func scan(volume: String) {
+        lock.withLock { if let tracker { hm_disk_scan_volume(tracker, volume) } }
+    }
 
     func stop() {
         lock.withLock {
@@ -180,7 +257,6 @@ private final class TrackerHandle: @unchecked Sendable {
     }
 }
 
-/// Runs on the tracker's thread, so it must stay outside the main actor. See `receiveSample`.
 private func receiveDiskStatus(_ status: UnsafePointer<hm_disk_status>?,
                                _ context: UnsafeMutableRawPointer?) {
     guard let status, let context else { return }
@@ -189,85 +265,173 @@ private func receiveDiskStatus(_ status: UnsafePointer<hm_disk_status>?,
     Task { @MainActor in tracker.update(copy) }
 }
 
-/// Publishes the core's disk tracking on the main actor.
 @MainActor @Observable
 final class DiskTracker {
+    // The notch always displays the internal disk.
     private(set) var status = DiskScanStatus()
     private(set) var report: DiskReportData?
+    private(set) var volumes: [DiskVolumeData] = []
+    private(set) var selectedReport: DiskReportData?
+    private(set) var actionError = ""
+    private(set) var editing = false
+
+    var selectedVolumeID = "" {
+        didSet {
+            selectedReport = nil
+            actionError = ""
+            reload()
+        }
+    }
+
+    var selectedVolume: DiskVolumeData? { volumes.first { $0.id == selectedVolumeID } }
+    var selectedStatus: DiskScanStatus { selectedVolume?.status ?? status }
+    var selectedAvailable: Bool { selectedVolume?.available ?? selectedVolumeID.isEmpty }
+    var roots: [String] { selectedVolume?.roots ?? initialRoots }
 
     var period = DiskPeriod.week {
         didSet { reload() }
     }
 
-    /// The folders to scan, saved between launches.
-    var roots: [String] {
-        didSet {
-            UserDefaults.standard.set(roots, forKey: "diskRoots")
-            withRoots { roots, count in
-                handle?.use { hm_disk_tracker_set_roots($0, roots, count) }
-            }
-        }
-    }
-
+    @ObservationIgnored private var initialRoots: [String]
     @ObservationIgnored private var handle: TrackerHandle?
     @ObservationIgnored private var reportTask: Task<Void, Never>?
+    @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var actionTask: Task<Void, Never>?
 
     init() {
-        roots = UserDefaults.standard.stringArray(forKey: "diskRoots") ?? Self.defaultRoots
+        initialRoots = UserDefaults.standard.stringArray(forKey: "diskRoots") ?? Self.defaultRoots
     }
 
     static var defaultRoots: [String] {
         (0..<hm_disk_default_root_count()).map { String(cString: hm_disk_default_root($0)) }
     }
 
-    /// The tracker must stay alive until `stop` returns, since the core holds it unretained.
     func start() {
         guard handle == nil else { return }
         let context = Unmanaged.passUnretained(self).toOpaque()
-        withRoots { roots, count in
-            handle = TrackerHandle(hm_disk_tracker_start(receiveDiskStatus, context, roots, count))
+        let copies = initialRoots.map { strdup($0) }
+        defer { copies.forEach { free($0) } }
+        let pointers = copies.map { UnsafePointer<CChar>($0) }
+        let pointer = pointers.withUnsafeBufferPointer {
+            hm_disk_tracker_start(receiveDiskStatus, context, $0.baseAddress, $0.count)
+        }
+        guard let pointer else {
+            actionError = "Disk tracker could not start"
+            return
+        }
+        let handle = TrackerHandle(pointer)
+        self.handle = handle
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let volumes = await Task.detached(priority: .utility) { handle.volumes() }.value
+                guard !Task.isCancelled else { return }
+                self?.apply(volumes)
+                try? await Task.sleep(for: .seconds(2))
+            }
         }
     }
 
     func scan() {
-        handle?.use { hm_disk_tracker_scan($0) }
+        guard let handle else { return }
+        if let selectedVolume, !selectedVolume.tracked {
+            addFolder(selectedVolume.mountPath, scanAfter: true)
+        } else {
+            handle.scan(volume: selectedVolumeID)
+        }
+    }
+
+    func addFolder(_ path: String, scanAfter: Bool = false) {
+        perform({ $0.action(path: path) }, selectResult: true, scanAfter: scanAfter)
+    }
+
+    func removeFolder(_ path: String) {
+        let id = selectedVolumeID
+        let updated = roots.filter { $0 != path }
+        perform { $0.action(volume: id, roots: updated) }
+    }
+
+    func useDefaults() {
+        let id = selectedVolumeID
+        let defaults = id.isEmpty ? Self.defaultRoots : selectedVolume.map { [$0.mountPath] } ?? []
+        perform { $0.action(volume: id, roots: defaults) }
+    }
+
+    func forgetSelectedVolume() {
+        let id = selectedVolumeID
+        perform({ $0.action(volume: id, forget: true) }, resetSelection: true)
+    }
+
+    private func perform(_ operation: @escaping @Sendable (TrackerHandle) -> DiskActionResult,
+                         selectResult: Bool = false, scanAfter: Bool = false,
+                         resetSelection: Bool = false) {
+        guard let handle, !editing else { return }
+        editing = true
+        actionError = ""
+        actionTask = Task { [weak self] in
+            let result = await Task.detached(priority: .utility) { operation(handle) }.value
+            let volumes = await Task.detached(priority: .utility) { handle.volumes() }.value
+            guard !Task.isCancelled, let self else { return }
+            editing = false
+            if let error = result.error {
+                actionError = error
+                return
+            }
+            if selectResult, let id = result.id { selectedVolumeID = id }
+            if resetSelection { selectedVolumeID = "" }
+            apply(volumes)
+            // Preserve the existing preference for internal roots. External roots live in C++.
+            if let internalVolume = volumes.first(where: { $0.id.isEmpty }) {
+                initialRoots = internalVolume.roots
+                UserDefaults.standard.set(initialRoots, forKey: "diskRoots")
+            }
+            if scanAfter, let id = result.id { handle.scan(volume: id) }
+            reload()
+        }
+    }
+
+    private func apply(_ new: [DiskVolumeData]) {
+        let old = selectedVolume
+        volumes = new
+        if !selectedVolumeID.isEmpty && !new.contains(where: { $0.id == selectedVolumeID }) {
+            selectedVolumeID = ""
+        }
+        if old?.lastScan != selectedVolume?.lastScan || old?.scanCount != selectedVolume?.scanCount
+            || (old?.scanning == true && selectedVolume?.scanning == false)
+            || old?.mountPath != selectedVolume?.mountPath
+            || (selectedReport == nil && selectedStatus.scanCount > 0) {
+            reload()
+        }
     }
 
     func stop() {
+        pollTask?.cancel()
+        actionTask?.cancel()
         reportTask?.cancel()
         handle?.stop()
         handle = nil
     }
 
     fileprivate func update(_ new: DiskScanStatus) {
-        // A scan that ends in the same second as the last one replaces it, so neither the time
-        // nor the count has to change.
         let finished = (status.scanning && !new.scanning)
             || new.lastScan != status.lastScan || new.scanCount != status.scanCount
         status = new
-        if finished || (report == nil && new.scanCount > 0) {
-            reload()
-        }
+        if finished || (report == nil && new.scanCount > 0) { reload() }
     }
 
     private func reload() {
         guard let handle else { return }
         let seconds = period.rawValue
+        let id = selectedVolumeID
         reportTask?.cancel()
         reportTask = Task { [weak self] in
-            let report = await Task.detached(priority: .utility) {
-                handle.report(since: seconds)
+            let (internalReport, selected) = await Task.detached(priority: .utility) {
+                let internalReport = handle.report(since: seconds)
+                let selected = id.isEmpty ? internalReport : handle.report(since: seconds, volume: id)
+                return (internalReport, selected)
             }.value
             guard !Task.isCancelled else { return }
-            self?.report = report
+            self?.report = internalReport
+            self?.selectedReport = selected
         }
-    }
-
-    /// Passes `roots` to the core as a C array, valid only during `body`.
-    private func withRoots(_ body: (UnsafePointer<UnsafePointer<CChar>?>?, Int) -> Void) {
-        let copies = roots.map { strdup($0) }
-        defer { copies.forEach { free($0) } }
-        let pointers = copies.map { UnsafePointer<CChar>($0) }
-        pointers.withUnsafeBufferPointer { body($0.baseAddress, $0.count) }
     }
 }

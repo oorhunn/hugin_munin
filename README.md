@@ -59,7 +59,14 @@ changed over the last scan, day, week, or month.
 - **Folders…** chooses what to scan. The default is the home folder, `/Applications`, `/Library`,
   `/opt`, and `/usr/local`.
 
-After the first scan, scans repeat every 6 hours while the app runs, and history stays in
+Use the **Drive** selector for a connected external drive, then **Track and Scan**, or choose
+**Add Drive or Folder…** to track specific external folders. Each drive keeps separate capacity
+figures and history. Offline drives retain their last report; reconnecting the same volume
+preserves history even if its name or mount path changes. The notch continues to show the
+internal disk. Local physical external volumes need a stable filesystem UUID; network shares
+and disk images are not supported. See [disk tracking](doc/disk-tracking.md).
+
+After each drive's first scan, scans repeat every 6 hours while the app runs, and history stays in
 `~/Library/Application Support/HuginMunin/DiskHistory` for up to 90 days. Nothing scans until you
 ask for the first one, because macOS asks for permission to read folders such as Documents.
 Folders that cannot be read are left out and counted at the bottom of the window. **Allow Access…**
@@ -71,8 +78,7 @@ Sizes are measured as space allocated on disk, and hard links count once. Known 
   overstated by up to 10 MB (50 MB for a file) when something crosses that size between scans.
 - A moved folder shows as one loss and one gain.
 - APFS clones count in full for each copy, because the shared blocks are not visible to a scan.
-- Free space is measured on the startup volume, so the headline does not cover a folder on another
-  volume.
+- Shared APFS containers can have capacity changes outside the selected volume’s scanned folders.
 
 ## Build and test
 

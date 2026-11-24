@@ -113,6 +113,14 @@ name and renamed.
 snapshots. It takes out anything either scan could not read, compares only folders both scans
 covered, and picks the non-overlapping rows that grew.
 
+External filesystem discovery and identity are isolated behind `disk_volume.hpp`, implemented
+with Disk Arbitration and filesystem capacity metadata on macOS. `DiskTracker` keeps per-volume
+roots, activation, schedule, and status, with one worker serializing all walks. External snapshots
+carry volume identity and volume-relative paths in version 2, with separate local history
+subdirectories. Existing internal version 1 history remains at its original location. Before
+saving an external scan, the tracker checks that identity and mount session still match. Offline
+volumes retain their last report. See [disk tracking](disk-tracking.md) for storage and limits.
+
 The Swift side is `ui/macos/DiskTracker.swift`, which copies reports out of the core off the main
 thread, and `ui/macos/DiskWindow.swift`. The Disk slide at the top of the expanded notch shows the
-same report as the window.
+internal report; the window can select another tracked or connected volume.

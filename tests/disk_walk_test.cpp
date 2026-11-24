@@ -1,6 +1,7 @@
 // The platform walker, against a real folder tree.
 #include "check.hpp"
 #include "hm/disk_snapshot.hpp"
+#include "hm/disk_volume.hpp"
 #include "hm/disk_walk.hpp"
 
 #include <algorithm>
@@ -169,5 +170,15 @@ int main()
   test_stops_when_asked(root);
   test_feeds_a_snapshot(root);
   test_defaults();
+  const auto volumes = hm::mounted_disk_volumes();
+  require(volumes.has_value(), "mounted volume discovery works");
+  for (const auto &volume : *volumes)
+    require(!volume.id.empty() && !volume.mount_path.empty() &&
+                !volume.session.empty(),
+            "eligible external filesystems have identity and mount metadata");
+  const auto internal = hm::disk_volume_for_path(root.string());
+  require(internal && internal->id.empty(),
+          "temporary tree resolves to the internal filesystem");
+
   fs::remove_all(root);
 }

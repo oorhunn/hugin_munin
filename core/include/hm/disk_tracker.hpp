@@ -4,7 +4,10 @@
 
 #include "hm/collectors.hpp"
 #include "hm/disk_snapshot.hpp"
+#include "hm/disk_volume.hpp"
 #include "hm/disk_walk.hpp"
+#include <map>
+#include <set>
 
 #include <chrono>
 #include <condition_variable>
@@ -30,6 +33,13 @@ struct DiskTrackerStatus {
   std::string error; // why the latest scan could not be saved, if it could not
 };
 
+struct DiskVolumeStatus {
+  DiskVolume volume;
+  bool tracked = false, available = false;
+  std::vector<std::string> roots; // absolute display paths
+  DiskTrackerStatus status;
+};
+
 struct DiskTrackerOptions {
   std::string history_dir = default_disk_history_dir();
   std::vector<std::string> roots = default_disk_roots();
@@ -41,6 +51,10 @@ struct DiskTrackerOptions {
                      const std::stop_token &)>
       walk = walk_disk;
   std::function<Collected<Disk>()> disk = collect_disk;
+  std::function<Collected<std::vector<DiskVolume>>()> volumes =
+      mounted_disk_volumes;
+  std::function<Collected<DiskVolume>(const std::string &)> volume_for_path =
+      disk_volume_for_path;
   std::function<std::int64_t()> now = [] {
     return static_cast<std::int64_t>(std::time(nullptr));
   };
@@ -62,38 +76,58 @@ public:
 
   // Used from the next scan on. A report only compares folders that both of its
   // scans covered.
-  void set_roots(std::vector<std::string> roots);
+  void set_roots(const std::vector<std::string> &roots);
 
   // Does nothing while a scan is running.
-  void scan_now();
+  void scan_now(const std::string &volume_id = "");
+
+  // Includes untracked connected drives and tracked offline drives. Empty ID is
+  // internal.
+  std::vector<DiskVolumeStatus> volumes() const;
+  Collected<std::string> add_root(const std::string &path);
+  Collected<void> set_volume_roots(const std::string &id,
+                                   const std::vector<std::string> &roots);
+  // Forget tracking preferences, retaining history on the internal disk.
+  Collected<void> forget_volume(const std::string &id);
 
   // Compares the latest scan with the one `since_seconds` before it, as in
   // choose_baseline. Reads from disk, so call it off the main thread.
   Collected<DiskReport> report(std::int64_t since_seconds,
-                               const DiskReportLimits &limits = {});
+                               const DiskReportLimits &limits = {},
+                               const std::string &volume_id = "");
 
 private:
+  struct Target {
+    DiskVolume volume;
+    std::vector<std::string>
+        roots; // external paths are volume-relative, starting with /
+    DiskTrackerStatus status;
+    std::optional<std::int64_t> last_attempt;
+    bool active = false, available = false;
+  };
   void run(const std::stop_token &stop);
-  void scan(std::vector<std::string> roots, const std::stop_token &stop);
+  void scan(const std::string &id, const std::stop_token &stop);
   void publish();
-  std::vector<std::int64_t> scan_times() const;
-  Collected<DiskSnapshot> load(std::int64_t time) const;
-  Collected<void> save(const DiskSnapshot &snapshot) const;
-  void refresh_history_status();
+  void reconcile();
+  void refresh_history_status(const std::string &id);
+  std::string history_dir(const std::string &id) const;
+  std::vector<std::int64_t> scan_times(const std::string &id) const;
+  Collected<DiskSnapshot> load(const std::string &id, std::int64_t time) const;
+  Collected<void> save(const std::string &id,
+                       const DiskSnapshot &snapshot) const;
+  Collected<void> save_targets() const; // caller holds mutex_
+  void load_targets();                  // before worker starts
 
   std::function<void(const DiskTrackerStatus &)> callback_;
   DiskTrackerOptions options_;
-
-  std::mutex mutex_; // guards the members below
+  mutable std::mutex mutex_;
   std::condition_variable_any wakeup_;
-  DiskTrackerStatus status_;
-  std::vector<std::string> roots_;
-  std::optional<std::int64_t> last_attempt_;
-  bool scan_requested_ = false;
-
-  mutable std::mutex
-      history_mutex_;   // keeps pruning away from a report that is reading
-  std::jthread worker_; // last, so it stops before the state above is destroyed
+  std::map<std::string, Target> targets_;
+  std::vector<DiskVolume> mounted_;
+  std::set<std::string> requested_;
+  std::string configuration_error_;
+  mutable std::mutex history_mutex_;
+  std::jthread worker_; // last: stops before shared state is destroyed
 };
 
 } // namespace hm
